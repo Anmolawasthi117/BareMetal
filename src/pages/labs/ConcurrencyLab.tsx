@@ -45,6 +45,7 @@ export default function ConcurrencyLab() {
       case 'goroutines': return 4
       case 'threads': return 4
       case 'async-await': return 4
+      case 'multiprocessing': return 4
       default: return 1
     }
   }

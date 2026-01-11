@@ -28,326 +28,423 @@ export interface MemoryStep {
     targetOwner?: string
 }
 
-export interface MemoryScenario {
-    id: string
-    title: string
-    language: Language
-    description: string
-    icon: string
-    codeTemplate: string
+export interface ScenarioImplementation {
+    code: string
     steps: MemoryStep[]
 }
 
+export interface MemoryScenario {
+    id: string
+    title: string
+    description: string
+    icon: string
+    implementations: Record<Language, ScenarioImplementation>
+}
+
 // ============================================
-// C++ Scenarios
+// Scenario 1: Allocation & Lifecycle
 // ============================================
 
-const cppMemoryLeak: MemoryScenario = {
-    id: 'cpp-memory-leak',
-    title: 'Memory Leak Demo',
-    language: 'cpp',
-    description: 'See what happens when you forget to call delete',
-    icon: '💧',
-    codeTemplate: `void processData() {
-    int* data = new int[100];  // Allocate on heap
+const allocationScenario: MemoryScenario = {
+    id: 'allocation',
+    title: 'Object Lifecycle',
+    description: 'How memory is allocated, used, and freed.',
+    icon: '📦',
+    implementations: {
+        cpp: {
+            code: `void processData() {
+    // 1. Manual Allocation
+    int* data = new int[100];
     
-    // ... do some work ...
+    // 2. Usage
+    process(data);
     
-    if (error) {
-        return;  // Oops! Forgot to free
+    // 3. Manual Deallocation
+    delete[] data;
+    data = nullptr;
+}`,
+            steps: [
+                {
+                    lineNumber: 3,
+                    code: 'int* data = new int[100];',
+                    explanation: '📦 HEAP: Allocating 400 bytes manually. We are responsible for this memory.',
+                    action: 'allocate-heap',
+                    blockId: 'cpp-block',
+                    blockSize: 400
+                },
+                {
+                    lineNumber: 6,
+                    code: 'process(data);',
+                    explanation: '⚙️ USING: The pointer is valid. Reading/Writing allowed.',
+                    action: 'scope-enter'
+                },
+                {
+                    lineNumber: 9,
+                    code: 'delete[] data;',
+                    explanation: '🧹 FREE: Manually returning memory to OS. Critical step!',
+                    action: 'free',
+                    blockId: 'cpp-block'
+                },
+                {
+                    lineNumber: 10,
+                    code: 'data = nullptr;',
+                    explanation: '🛡️ NULL: Preventing dangling pointer usage.',
+                    action: 'scope-exit'
+                }
+            ]
+        },
+        rust: {
+            code: `fn main() {
+    // 1. RAII Allocation (Owner)
+    let s1 = String::from("hello");
+    
+    // 2. Move (Ownership Transfer)
+    let s2 = s1;
+    
+    // 3. Auto-Drop (Scope End)
+    // s2 dropped here
+}`,
+            steps: [
+                {
+                    lineNumber: 3,
+                    code: 'let s1 = String::from("hello");',
+                    explanation: '📦 OWNER: s1 owns the heap memory. Rust tracks this.',
+                    action: 'allocate-heap',
+                    blockId: 'rust-block',
+                    blockSize: 24,
+                    owner: 's1'
+                },
+                {
+                    lineNumber: 6,
+                    code: 'let s2 = s1;',
+                    explanation: '🔄 MOVE: Ownership transfers to s2. s1 is now invalid (compile-time check).',
+                    action: 'transfer-ownership',
+                    blockId: 'rust-block',
+                    owner: 's1',
+                    targetOwner: 's2'
+                },
+                {
+                    lineNumber: 9,
+                    code: '// s2 dropped here',
+                    explanation: '🔥 DROP: Scope ends. Rust automatically frees s2\'s memory. No leaks.',
+                    action: 'free',
+                    blockId: 'rust-block'
+                }
+            ]
+        },
+        python: {
+            code: `def main():
+    # 1. Object Creation (Ref Count = 1)
+    data = [1, 2, 3]
+    
+    # 2. Reference (Ref Count = 2)
+    alias = data
+    
+    # 3. Del Reference (Ref Count = 1)
+    del alias
+    
+    # 4. End Scope (Ref Count = 0)
+}`,
+            steps: [
+                {
+                    lineNumber: 3,
+                    code: 'data = [1, 2, 3]',
+                    explanation: '📦 ALLOC: List created. RefCount = 1 (data).',
+                    action: 'allocate-heap',
+                    blockId: 'py-block',
+                    blockSize: 64
+                },
+                {
+                    lineNumber: 6,
+                    code: 'alias = data',
+                    explanation: '🔗 REF: New reference. RefCount = 2.',
+                    action: 'add-reference',
+                    blockId: 'py-block'
+                },
+                {
+                    lineNumber: 9,
+                    code: 'del alias',
+                    explanation: '✂️ DEREF: Reference removed. RefCount = 1.',
+                    action: 'remove-reference',
+                    blockId: 'py-block'
+                },
+                {
+                    lineNumber: 11,
+                    code: '# 4. End Scope (Ref Count = 0)',
+                    explanation: '♻️ GC: Scope ends, data lost. RefCount -> 0. Python frees it.',
+                    action: 'free',
+                    blockId: 'py-block'
+                }
+            ]
+        },
+        javascript: {
+            code: `function main() {
+    // 1. Allocation
+    let obj = { id: 1 };
+    
+    // 2. Reference
+    let ref = obj;
+    
+    // 3. Unreachable
+    obj = null;
+    ref = null;
+    
+    // 4. GC Collects later
+}`,
+            steps: [
+                {
+                    lineNumber: 3,
+                    code: 'let obj = { id: 1 };',
+                    explanation: '📦 ALLOC: Object created on V8 Heap.',
+                    action: 'allocate-heap',
+                    blockId: 'js-block',
+                    blockSize: 32
+                },
+                {
+                    lineNumber: 6,
+                    code: 'let ref = obj;',
+                    explanation: '🔗 MARK: Another reference points to this object.',
+                    action: 'add-reference' // Visual distinction mostly
+                },
+                {
+                    lineNumber: 9,
+                    code: 'obj = null;',
+                    explanation: '👻 DETACH: Broken one link. Object still reachable via ref.',
+                    action: 'remove-reference'
+                },
+                {
+                    lineNumber: 10,
+                    code: 'ref = null;',
+                    explanation: '🗑️ GARBAGE: No references left! Marked for sweep.',
+                    action: 'gc-mark',
+                    blockId: 'js-block'
+                }
+            ]
+        },
+        go: {
+            code: `func main() {
+    // 1. Make (Escape to Heap)
+    data := make([]int, 100)
+    
+    // 2. Use
+    process(data)
+    
+    // 3. Out of Scope / Nil
+    data = nil
+    
+    // 4. GC runs eventually
+}`,
+            steps: [
+                {
+                    lineNumber: 3,
+                    code: 'data := make([]int, 100)',
+                    explanation: '📦 ALLOC: Slice escapes to heap.',
+                    action: 'allocate-heap',
+                    blockId: 'go-block',
+                    blockSize: 800
+                },
+                {
+                    lineNumber: 6,
+                    code: 'process(data)',
+                    explanation: '⚙️ RUN: Active usage.',
+                    action: 'scope-enter'
+                },
+                {
+                    lineNumber: 9,
+                    code: 'data = nil',
+                    explanation: '👻 UNREACHABLE: Pointer removed. GC candidate.',
+                    action: 'gc-mark',
+                    blockId: 'go-block'
+                },
+                {
+                    lineNumber: 11,
+                    code: '// 4. GC runs eventually',
+                    explanation: '🧹 SWEEP: Go Runtime eventually reclaims this memory.',
+                    action: 'gc-sweep',
+                    blockId: 'go-block'
+                }
+            ]
+        }
     }
-    
-    delete[] data;  // Never reached!
-}
-
-// Scope ends - data is leaked`,
-    steps: [
-        {
-            lineNumber: 2,
-            code: 'int* data = new int[100];',
-            explanation: '📦 Allocating 400 bytes on the HEAP. The pointer `data` lives on the stack, but the actual array is on the heap.',
-            action: 'allocate-heap',
-            blockId: 'data-block',
-            blockSize: 400,
-        },
-        {
-            lineNumber: 4,
-            code: '// ... do some work ...',
-            explanation: '⚙️ The program is using the allocated memory. Everything is fine so far.',
-            action: 'scope-enter',
-        },
-        {
-            lineNumber: 7,
-            code: 'return;  // Oops! Forgot to free',
-            explanation: '⚠️ ERROR PATH: Function returns early without freeing memory! The pointer is destroyed but the heap memory remains.',
-            action: 'leak',
-            blockId: 'data-block',
-        },
-        {
-            lineNumber: 13,
-            code: '// Scope ends - data is leaked',
-            explanation: '💧 MEMORY LEAK! The 400 bytes are now orphaned - no pointer references them, but they\'re still allocated until the program ends.',
-            action: 'scope-exit',
-        },
-    ],
-}
-
-const cppProperCleanup: MemoryScenario = {
-    id: 'cpp-proper-cleanup',
-    title: 'Proper Memory Cleanup',
-    language: 'cpp',
-    description: 'The correct way to manage heap memory in C++',
-    icon: '✅',
-    codeTemplate: `void processData() {
-    int* data = new int[100];  // Allocate
-    
-    // ... do some work ...
-    
-    delete[] data;  // Always free!
-    data = nullptr;  // Prevent dangling
-}
-
-// Clean exit - no leaks!`,
-    steps: [
-        {
-            lineNumber: 2,
-            code: 'int* data = new int[100];',
-            explanation: '📦 Allocating 400 bytes on the heap. We MUST remember to free this later.',
-            action: 'allocate-heap',
-            blockId: 'data-block',
-            blockSize: 400,
-        },
-        {
-            lineNumber: 4,
-            code: '// ... do some work ...',
-            explanation: '⚙️ Using the allocated memory for processing.',
-            action: 'scope-enter',
-        },
-        {
-            lineNumber: 6,
-            code: 'delete[] data;',
-            explanation: '🧹 Freeing the heap memory! The 400 bytes are returned to the system.',
-            action: 'free',
-            blockId: 'data-block',
-        },
-        {
-            lineNumber: 7,
-            code: 'data = nullptr;',
-            explanation: '🛡️ Setting pointer to nullptr prevents accidental use of freed memory (dangling pointer).',
-            action: 'scope-exit',
-        },
-    ],
 }
 
 // ============================================
-// Rust Scenarios
+// Scenario 2: Safety Checks (Forgot to Free)
 // ============================================
 
-const rustOwnershipTransfer: MemoryScenario = {
-    id: 'rust-ownership',
-    title: 'Ownership Transfer',
-    language: 'rust',
-    description: 'Watch ownership move between variables',
-    icon: '🔗',
-    codeTemplate: `fn main() {
-    let s1 = String::from("hello");  // s1 owns the data
+const safetyScenario: MemoryScenario = {
+    id: 'safety',
+    title: 'The "Forgot to Free" Test',
+    description: 'What happens if we forget cleanup?',
+    icon: '⚠️',
+    implementations: {
+        cpp: {
+            code: `void risky() {
+    // Allocating...
+    int* ptr = new int(42);
     
-    let s2 = s1;  // Ownership MOVES to s2
+    // Doing work...
+    // Oops, forgot delete!
     
-    // println!("{}", s1);  // ERROR! s1 no longer valid
+    // Scope ends
+}`,
+            steps: [
+                {
+                    lineNumber: 3,
+                    code: 'int* ptr = new int(42);',
+                    explanation: '📦 ALLOC: 4 bytes allocated on heap.',
+                    action: 'allocate-heap',
+                    blockId: 'leak-block',
+                    blockSize: 4
+                },
+                {
+                    lineNumber: 6,
+                    code: '// Oops, forgot delete!',
+                    explanation: '⚠️ WARNING: No delete keyword found.',
+                    action: 'scope-enter'
+                },
+                {
+                    lineNumber: 8,
+                    code: '// Scope ends',
+                    explanation: '💧 LEAK: stack pointer `ptr` is gone, but heap memory REMAINS used. 4 bytes lost forever (until process exit).',
+                    action: 'leak',
+                    blockId: 'leak-block'
+                }
+            ]
+        },
+        rust: {
+            code: `fn safe() {
+    // Allocating...
+    let b = Box::new(42);
     
-    println!("{}", s2);  // s2 is the owner now
+    // Doing work...
+    // Forgot to free? Impossible!
+    
+    // Scope ends -> Drop
+}`,
+            steps: [
+                {
+                    lineNumber: 3,
+                    code: 'let b = Box::new(42);',
+                    explanation: '📦 ALLOC: Box owns the memory.',
+                    action: 'allocate-heap',
+                    blockId: 'safe-block',
+                    blockSize: 4,
+                    owner: 'b'
+                },
+                {
+                    lineNumber: 6,
+                    code: '// Forgot to free? Impossible!',
+                    explanation: '🛡️ SAFETY: Rust enforces cleanup via Drop trait.',
+                    action: 'scope-enter'
+                },
+                {
+                    lineNumber: 8,
+                    code: '// Scope ends -> Drop',
+                    explanation: '✅ CLEANUP: Variable b out of scope. Memory freed automatically.',
+                    action: 'free',
+                    blockId: 'safe-block'
+                }
+            ]
+        },
+        python: {
+            code: `def safe():
+    # Allocating...
+    x = MyObject()
+    
+    # Forget specific cleanup?
+    # Python GC handles it
+    
+    return
+}`,
+            steps: [
+                {
+                    lineNumber: 3,
+                    code: 'x = MyObject()',
+                    explanation: '📦 ALLOC: Object created.',
+                    action: 'allocate-heap',
+                    blockId: 'safe-py',
+                    blockSize: 32
+                },
+                {
+                    lineNumber: 6,
+                    code: '# Python GC handles it',
+                    explanation: '🤖 AUTO: No manual free needed in Python.',
+                    action: 'scope-enter'
+                },
+                {
+                    lineNumber: 8,
+                    code: 'return',
+                    explanation: '✅ GC: Local vars cleared on return. RefCount -> 0. Freed.',
+                    action: 'free',
+                    blockId: 'safe-py'
+                }
+            ]
+        },
+        javascript: {
+            code: `function safe() {
+    // Allocating...
+    let x = { data: 42 };
+    
+    // Forget cleanup?
+    // JS Engine handles it
+    
+    return;
+}`,
+            steps: [
+                {
+                    lineNumber: 3,
+                    code: 'let x = { data: 42 };',
+                    explanation: '📦 ALLOC: Object created.',
+                    action: 'allocate-heap',
+                    blockId: 'safe-js',
+                    blockSize: 32
+                },
+                {
+                    lineNumber: 8,
+                    code: 'return;',
+                    explanation: '✅ GC: Context popped. Object unreachable. GC will collect it.',
+                    action: 'gc-mark',
+                    blockId: 'safe-js'
+                }
+            ]
+        },
+        go: {
+            code: `func safe() {
+    // Allocating...
+    p := new(int)
+    *p = 42
+    
+    // Forget cleanup?
+    // Go Runtime handles it
+    
+    return
+}`,
+            steps: [
+                {
+                    lineNumber: 3,
+                    code: 'p := new(int)',
+                    explanation: '📦 ALLOC: Int allocated on heap.',
+                    action: 'allocate-heap',
+                    blockId: 'safe-go',
+                    blockSize: 8
+                },
+                {
+                    lineNumber: 10,
+                    code: 'return',
+                    explanation: '✅ GC: Pointer lost. Memory becomes garbage. Collector will sweep it.',
+                    action: 'gc-mark',
+                    blockId: 'safe-go'
+                }
+            ]
+        }
+    }
 }
-
-// s2 goes out of scope - memory freed`,
-    steps: [
-        {
-            lineNumber: 2,
-            code: 'let s1 = String::from("hello");',
-            explanation: '📦 Creating a String on the heap. Variable `s1` OWNS this memory.',
-            action: 'allocate-heap',
-            blockId: 'string-block',
-            blockSize: 5,
-            owner: 's1',
-        },
-        {
-            lineNumber: 4,
-            code: 'let s2 = s1;',
-            explanation: '🔄 Ownership TRANSFERS from s1 to s2. This is a MOVE, not a copy. s1 is now invalid!',
-            action: 'transfer-ownership',
-            blockId: 'string-block',
-            owner: 's1',
-            targetOwner: 's2',
-        },
-        {
-            lineNumber: 6,
-            code: '// println!("{}", s1);  // ERROR!',
-            explanation: '🚫 Rust compiler prevents using s1 - it\'s been moved! This catches use-after-move bugs at compile time.',
-            action: 'scope-enter',
-        },
-        {
-            lineNumber: 8,
-            code: 'println!("{}", s2);',
-            explanation: '✅ s2 is the valid owner. We can use the data through s2.',
-            action: 'scope-enter',
-        },
-        {
-            lineNumber: 11,
-            code: '// s2 goes out of scope - memory freed',
-            explanation: '🗑️ When s2 goes out of scope, Rust automatically frees the memory. No leaks, no manual cleanup!',
-            action: 'free',
-            blockId: 'string-block',
-        },
-    ],
-}
-
-// ============================================
-// Python Scenarios
-// ============================================
-
-const pythonRefCounting: MemoryScenario = {
-    id: 'python-refcount',
-    title: 'Reference Counting',
-    language: 'python',
-    description: 'See how Python tracks object references',
-    icon: '🔢',
-    codeTemplate: `def demo():
-    data = [1, 2, 3]  # refcount = 1
-    
-    alias = data  # refcount = 2
-    
-    copy = data  # refcount = 3
-    
-    del alias  # refcount = 2
-    
-    del copy  # refcount = 1
-    
-    return data  # passed to caller
-
-# refcount = 0 when caller done`,
-    steps: [
-        {
-            lineNumber: 2,
-            code: 'data = [1, 2, 3]',
-            explanation: '📦 Creating a list object. Reference count starts at 1 (data references it).',
-            action: 'allocate-heap',
-            blockId: 'list-block',
-            blockSize: 24,
-        },
-        {
-            lineNumber: 4,
-            code: 'alias = data',
-            explanation: '➕ Creating another reference to the SAME object. Refcount → 2. No new memory allocated!',
-            action: 'add-reference',
-            blockId: 'list-block',
-        },
-        {
-            lineNumber: 6,
-            code: 'copy = data',
-            explanation: '➕ Another reference! Refcount → 3. All three variables point to the same list.',
-            action: 'add-reference',
-            blockId: 'list-block',
-        },
-        {
-            lineNumber: 8,
-            code: 'del alias',
-            explanation: '➖ Deleting reference. Refcount → 2. Object still alive because other refs exist.',
-            action: 'remove-reference',
-            blockId: 'list-block',
-        },
-        {
-            lineNumber: 10,
-            code: 'del copy',
-            explanation: '➖ Another reference gone. Refcount → 1. Only `data` references it now.',
-            action: 'remove-reference',
-            blockId: 'list-block',
-        },
-        {
-            lineNumber: 14,
-            code: '# refcount = 0 when caller done',
-            explanation: '🗑️ When refcount hits 0, Python automatically frees the memory. No manual cleanup needed!',
-            action: 'free',
-            blockId: 'list-block',
-        },
-    ],
-}
-
-// ============================================
-// Go/JavaScript GC Scenarios
-// ============================================
-
-const goGarbageCollection: MemoryScenario = {
-    id: 'go-gc',
-    title: 'Garbage Collection',
-    language: 'go',
-    description: 'Watch the GC sweep unreachable memory',
-    icon: '🗑️',
-    codeTemplate: `func process() {
-    data := make([]int, 1000)  // Allocate
-    
-    result := compute(data)
-    
-    data = nil  // No longer needed
-    
-    // GC will eventually clean up
-    
-    return result
-}
-
-// GC runs periodically`,
-    steps: [
-        {
-            lineNumber: 2,
-            code: 'data := make([]int, 1000)',
-            explanation: '📦 Allocating a slice on the heap. Go\'s runtime tracks this allocation.',
-            action: 'allocate-heap',
-            blockId: 'slice-block',
-            blockSize: 8000,
-        },
-        {
-            lineNumber: 4,
-            code: 'result := compute(data)',
-            explanation: '⚙️ Using the data. The slice is still reachable via `data` variable.',
-            action: 'scope-enter',
-        },
-        {
-            lineNumber: 6,
-            code: 'data = nil',
-            explanation: '👻 Setting to nil. The slice is now UNREACHABLE - it\'s garbage!',
-            action: 'gc-mark',
-            blockId: 'slice-block',
-        },
-        {
-            lineNumber: 8,
-            code: '// GC will eventually clean up',
-            explanation: '⏳ The memory isn\'t freed immediately. The GC runs periodically in the background.',
-            action: 'scope-enter',
-        },
-        {
-            lineNumber: 12,
-            code: '// GC runs periodically',
-            explanation: '🧹 GC SWEEP! The garbage collector identifies and frees all unreachable memory.',
-            action: 'gc-sweep',
-            blockId: 'slice-block',
-        },
-    ],
-}
-
-// ============================================
-// Export All Scenarios
-// ============================================
 
 export const MEMORY_SCENARIOS: MemoryScenario[] = [
-    cppMemoryLeak,
-    cppProperCleanup,
-    rustOwnershipTransfer,
-    pythonRefCounting,
-    goGarbageCollection,
+    allocationScenario,
+    safetyScenario
 ]
-
-export const getScenariosByLanguage = (lang: Language): MemoryScenario[] => {
-    return MEMORY_SCENARIOS.filter(s => s.language === lang)
-}
 
 export const getScenarioById = (id: string): MemoryScenario | undefined => {
     return MEMORY_SCENARIOS.find(s => s.id === id)

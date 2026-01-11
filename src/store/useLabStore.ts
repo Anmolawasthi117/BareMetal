@@ -141,6 +141,10 @@ interface LabState {
     // Concurrency Lab Scenarios
     currentConcurrencyScenario: string | null
     setConcurrencyScenario: (id: string | null) => void
+
+    // Compiler Lab Scenarios
+    currentCompilerScenario: string | null
+    setCompilerScenario: (id: string | null) => void
 }
 
 export const useLabStore = create<LabState>((set) => ({
@@ -205,4 +209,8 @@ export const useLabStore = create<LabState>((set) => ({
     // Concurrency Lab Scenarios
     currentConcurrencyScenario: null,
     setConcurrencyScenario: (id) => set({ currentConcurrencyScenario: id, tasks: [] }),
+
+    // Compiler Lab Scenarios
+    currentCompilerScenario: null,
+    setCompilerScenario: (id) => set({ currentCompilerScenario: id }),
 }))

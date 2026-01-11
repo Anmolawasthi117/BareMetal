@@ -1,10 +1,14 @@
 import { useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
-import { MemoryScenario, MemoryStep } from '../../data/memoryScenarios'
+import { MemoryStep } from '../../data/memoryScenarios'
 import { LANGUAGE_CONFIG, Language } from '../../store/useLabStore'
 
 interface CodeStepperPanelProps {
-  scenario: MemoryScenario
+  title: string
+  icon: string
+  language: Language
+  code: string
+  steps: MemoryStep[]
   currentStep: number
   totalSteps: number
   onPrevStep: () => void
@@ -15,7 +19,11 @@ interface CodeStepperPanelProps {
 }
 
 export default function CodeStepperPanel({
-  scenario,
+  title,
+  icon,
+  language,
+  code,
+  steps,
   currentStep,
   totalSteps,
   onPrevStep,
@@ -24,21 +32,21 @@ export default function CodeStepperPanel({
   isPlaying,
   onPlayPause,
 }: CodeStepperPanelProps) {
-  const config = LANGUAGE_CONFIG[scenario.language]
+  const config = LANGUAGE_CONFIG[language]
   const codeRef = useRef<HTMLPreElement>(null)
 
   // Auto-scroll to highlighted line
   useEffect(() => {
-    if (codeRef.current && currentStep < scenario.steps.length) {
-      const lineNumber = scenario.steps[currentStep].lineNumber
+    if (codeRef.current && currentStep < steps.length) {
+      const lineNumber = steps[currentStep].lineNumber
       const lines = codeRef.current.querySelectorAll('.code-line')
       if (lines[lineNumber - 1]) {
         lines[lineNumber - 1].scrollIntoView({ behavior: 'smooth', block: 'center' })
       }
     }
-  }, [currentStep, scenario.steps])
+  }, [currentStep, steps])
 
-  const currentStepData = scenario.steps[currentStep]
+  const currentStepData = steps[currentStep]
   const highlightedLine = currentStepData?.lineNumber || -1
 
   return (
@@ -46,10 +54,10 @@ export default function CodeStepperPanel({
       {/* Header */}
       <div className={`flex items-center justify-between px-4 py-3 border-b border-metal bg-${config.color}/5`}>
         <div className="flex items-center gap-3">
-          <span className="text-xl">{scenario.icon}</span>
+          <span className="text-xl">{icon}</span>
           <div>
             <h3 className={`font-code text-sm font-bold text-${config.color}`}>
-              {scenario.title}
+              {title}
             </h3>
             <p className="text-[10px] text-steel">{config.name}</p>
           </div>
@@ -62,7 +70,7 @@ export default function CodeStepperPanel({
       {/* Code Display */}
       <div className="flex-1 overflow-auto p-4">
         <pre ref={codeRef} className="font-code text-xs leading-relaxed">
-          {scenario.codeTemplate.split('\n').map((line, idx) => (
+          {code.split('\n').map((line, idx) => (
             <motion.div
               key={idx}
               animate={{

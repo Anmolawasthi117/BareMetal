@@ -38,6 +38,7 @@ export default function TimelineVisualization({
       case 'goroutines': return 'neon-go'
       case 'threads': return 'neon-cpp'
       case 'async-await': return 'neon-rust'
+      case 'multiprocessing': return 'neon-py'
       default: return 'neon-cpp'
     }
   }
@@ -50,13 +51,15 @@ export default function TimelineVisualization({
       <div className={`flex items-center justify-between px-4 py-3 border-b border-metal bg-${modelColor}/5`}>
         <div className="flex items-center gap-3">
           <span className={`text-${modelColor} text-lg`}>
-            {model === 'event-loop' ? '🔄' : model === 'goroutines' ? '🐹' : model === 'threads' ? '🚛' : '⚡'}
+            {model === 'event-loop' ? '🔄' : model === 'goroutines' ? '🐹' : model === 'threads' ? '🚛' : model === 'multiprocessing' ? '🏭' : '⚡'}
           </span>
           <div>
             <h3 className={`font-code text-xs font-bold text-${modelColor} uppercase`}>
               {model === 'event-loop' ? 'Event Loop' : 
                model === 'goroutines' ? 'Goroutines' : 
-               model === 'threads' ? 'OS Threads' : 'Async/Await'}
+               model === 'threads' ? 'OS Threads' : 
+               model === 'multiprocessing' ? 'Multiprocessing' :
+               'Async/Await'}
             </h3>
             <p className="text-[10px] text-steel">
               {lanes} lane{lanes > 1 ? 's' : ''} • {tasks.length} tasks
@@ -83,6 +86,7 @@ export default function TimelineVisualization({
                 <span className={`w-2 h-2 rounded-full bg-${modelColor}`} />
                 {model === 'event-loop' ? 'Main' : 
                  model === 'goroutines' ? `Goroutine ${i + 1}` : 
+                 model === 'multiprocessing' ? `Process ${i + 1}` :
                  `Thread ${i + 1}`}
               </div>
             ))}

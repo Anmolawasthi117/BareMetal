@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { MEMORY_SCENARIOS, MemoryScenario, getScenariosByLanguage } from '../../data/memoryScenarios'
+import { MEMORY_SCENARIOS, MemoryScenario } from '../../data/memoryScenarios'
 import { Language, LANGUAGE_CONFIG } from '../../store/useLabStore'
 
 interface ScenarioSelectorProps {
@@ -13,7 +13,7 @@ export default function ScenarioSelector({
   currentScenario, 
   onSelectScenario 
 }: ScenarioSelectorProps) {
-  const scenarios = getScenariosByLanguage(language)
+  const scenarios = MEMORY_SCENARIOS
   const config = LANGUAGE_CONFIG[language]
 
   if (scenarios.length === 0) {

@@ -1,12 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { useLabStore, LANGUAGE_CONFIG, MemoryBlock } from '../../store/useLabStore'
+import { useLabStore, LANGUAGE_CONFIG } from '../../store/useLabStore'
 import { LanguageSelector } from '../../components/editor/MonacoWrapper'
 import ScenarioSelector from '../../components/memory/ScenarioSelector'
 import CodeStepperPanel from '../../components/memory/CodeStepperPanel'
 import ExplanationPanel from '../../components/memory/ExplanationPanel'
 import BlockGrid, { LeakIndicator, GCSweeper } from '../../components/visualizer/memory/BlockGrid'
-import { getScenarioById, getScenariosByLanguage, MemoryStep } from '../../data/memoryScenarios'
+import { MEMORY_SCENARIOS, getScenarioById, MemoryStep } from '../../data/memoryScenarios'
 
 export default function MemoryLab() {
   const { 
@@ -15,11 +15,9 @@ export default function MemoryLab() {
     addMemoryBlock,
     removeMemoryBlock,
     updateMemoryBlock,
-    clearMemory,
     currentMemoryScenario,
     currentMemoryStep,
     setMemoryScenario,
-    setMemoryStep,
     nextMemoryStep,
     prevMemoryStep,
     resetMemoryScenario,
@@ -32,24 +30,24 @@ export default function MemoryLab() {
   
   const config = LANGUAGE_CONFIG[language]
   const scenario = currentMemoryScenario ? getScenarioById(currentMemoryScenario) : null
-  const scenarios = getScenariosByLanguage(language)
+  
+  // Get language-specific implementation
+  const implementation = scenario?.implementations[language]
+  const steps = implementation?.steps || []
+  const currentStepData = steps[currentMemoryStep] || null
 
-  // Auto-select first scenario when language changes
+  // Auto-select first scenario on mount
   useEffect(() => {
-    const langScenarios = getScenariosByLanguage(language)
-    if (langScenarios.length > 0 && (!scenario || scenario.language !== language)) {
-      setMemoryScenario(langScenarios[0].id)
+    if (!currentMemoryScenario && MEMORY_SCENARIOS.length > 0) {
+      setMemoryScenario(MEMORY_SCENARIOS[0].id)
     }
-  }, [language, scenario, setMemoryScenario])
+  }, [currentMemoryScenario, setMemoryScenario])
 
   // Process step action when step changes
   useEffect(() => {
-    if (!scenario) return
-    const step = scenario.steps[currentMemoryStep]
-    if (!step) return
-    
-    executeStepAction(step)
-  }, [currentMemoryStep, scenario])
+    if (!currentStepData) return
+    executeStepAction(currentStepData)
+  }, [currentMemoryStep, currentStepData])
 
   // Execute the memory action for a step
   const executeStepAction = useCallback((step: MemoryStep) => {
@@ -101,7 +99,7 @@ export default function MemoryLab() {
         
       case 'add-reference':
         if (step.blockId) {
-          const block = memoryBlocks.find(b => b.id === step.blockId)
+          const block = useLabStore.getState().memoryBlocks.find(b => b.id === step.blockId)
           if (block && block.refCount !== undefined) {
             updateMemoryBlock(step.blockId, { refCount: block.refCount + 1 })
           }
@@ -110,7 +108,7 @@ export default function MemoryLab() {
         
       case 'remove-reference':
         if (step.blockId) {
-          const block = memoryBlocks.find(b => b.id === step.blockId)
+          const block = useLabStore.getState().memoryBlocks.find(b => b.id === step.blockId)
           if (block && block.refCount !== undefined) {
             const newCount = block.refCount - 1
             updateMemoryBlock(step.blockId, { refCount: newCount })
@@ -130,20 +128,21 @@ export default function MemoryLab() {
       case 'gc-sweep':
         setGcActive(true)
         setTimeout(() => {
-          memoryBlocks
+          const blocks = useLabStore.getState().memoryBlocks
+          blocks
             .filter(b => b.status === 'garbage')
             .forEach(b => removeMemoryBlock(b.id))
           setGcActive(false)
         }, 1500)
         break
     }
-  }, [addMemoryBlock, updateMemoryBlock, removeMemoryBlock, memoryBlocks, language])
+  }, [addMemoryBlock, updateMemoryBlock, removeMemoryBlock, language])
 
   // Auto-play functionality
   useEffect(() => {
-    if (isPlaying && scenario) {
+    if (isPlaying && steps.length > 0) {
       playIntervalRef.current = window.setInterval(() => {
-        if (currentMemoryStep < scenario.steps.length - 1) {
+        if (currentMemoryStep < steps.length - 1) {
           nextMemoryStep()
         } else {
           setIsPlaying(false)
@@ -156,7 +155,7 @@ export default function MemoryLab() {
         clearInterval(playIntervalRef.current)
       }
     }
-  }, [isPlaying, currentMemoryStep, scenario, nextMemoryStep])
+  }, [isPlaying, currentMemoryStep, steps.length, nextMemoryStep])
 
   const handlePlayPause = () => {
     setIsPlaying(!isPlaying)
@@ -174,7 +173,6 @@ export default function MemoryLab() {
   }
 
   const hasLeak = memoryBlocks.some(b => b.status === 'leaked')
-  const currentStep = scenario?.steps[currentMemoryStep] || null
 
   return (
     <div className="h-full flex flex-col p-6">
@@ -251,11 +249,15 @@ export default function MemoryLab() {
 
         {/* Code Stepper Panel */}
         <div className="w-1/3 min-w-[300px]">
-          {scenario ? (
+          {scenario && implementation ? (
             <CodeStepperPanel
-              scenario={scenario}
+              title={scenario.title}
+              icon={scenario.icon}
+              language={language}
+              code={implementation.code}
+              steps={steps}
               currentStep={currentMemoryStep}
-              totalSteps={scenario.steps.length}
+              totalSteps={steps.length}
               onPrevStep={prevMemoryStep}
               onNextStep={nextMemoryStep}
               onReset={handleReset}
@@ -283,10 +285,10 @@ export default function MemoryLab() {
       {/* Explanation Panel */}
       <div className="mt-4">
         <ExplanationPanel
-          step={currentStep}
+          step={currentStepData}
           language={language}
           stepNumber={currentMemoryStep}
-          totalSteps={scenario?.steps.length || 0}
+          totalSteps={steps.length}
         />
       </div>
 

@@ -1,17 +1,41 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import MonacoWrapper, { LanguageSelector } from '../../components/editor/MonacoWrapper'
 import AssemblyView from '../../components/editor/AssemblyView'
+import CompilerScenarioSelector from '../../components/compiler/CompilerScenarioSelector'
 import { useGodbolt } from '../../hooks/useGodbolt'
 import { useLabStore, LANGUAGE_CONFIG } from '../../store/useLabStore'
+import { COMPILER_SCENARIOS } from '../../data/compilerScenarios'
 
 export default function CompilerLab() {
-  const { language } = useLabStore()
+  const { 
+    language,
+    currentCompilerScenario,
+    setCompilerScenario,
+    setCode
+  } = useLabStore()
+  
   const { output, isLoading, error } = useGodbolt()
   const [hoveredLine, setHoveredLine] = useState<number | null>(null)
 
   const config = LANGUAGE_CONFIG[language]
   const isCompiled = ['cpp', 'go', 'rust'].includes(language)
+
+  // Auto-select first scenario
+  useEffect(() => {
+    if (!currentCompilerScenario && COMPILER_SCENARIOS.length > 0) {
+      setCompilerScenario(COMPILER_SCENARIOS[0].id)
+    }
+  }, [currentCompilerScenario, setCompilerScenario])
+
+  // Update code when scenario/language changes
+  useEffect(() => {
+    if (!currentCompilerScenario) return
+    const scenario = COMPILER_SCENARIOS.find(s => s.id === currentCompilerScenario)
+    if (scenario && scenario.code[language]) {
+      setCode(scenario.code[language])
+    }
+  }, [currentCompilerScenario, language, setCode])
 
   return (
     <div className="h-full flex flex-col p-6">
@@ -28,6 +52,14 @@ export default function CompilerLab() {
             </p>
           </div>
           <LanguageSelector />
+        </div>
+
+        {/* Scenario Selector */}
+        <div className="mb-4">
+          <CompilerScenarioSelector
+            currentScenario={currentCompilerScenario}
+            onSelectScenario={setCompilerScenario}
+          />
         </div>
 
         {/* Language Info Banner */}

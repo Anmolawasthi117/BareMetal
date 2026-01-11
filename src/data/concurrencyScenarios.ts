@@ -4,7 +4,7 @@ import { Language } from '../store/useLabStore'
 // Concurrency Scenario Types
 // ============================================
 
-export type ConcurrencyModel = 'event-loop' | 'goroutines' | 'threads' | 'async-await'
+export type ConcurrencyModel = 'event-loop' | 'goroutines' | 'threads' | 'async-await' | 'actor' | 'multiprocessing'
 
 export interface TaskDefinition {
     id: string
@@ -29,9 +29,7 @@ export interface ConcurrencyScenario {
     analogy: {
         title: string
         description: string
-        comparison: {
-            [key in ConcurrencyModel]?: string
-        }
+        comparison: Partial<Record<ConcurrencyModel, string>>
     }
     tasks: TaskDefinition[]
     languages: Partial<Record<Language, LanguageImplementation>>
@@ -49,6 +47,7 @@ const RESTAURANT_ANALOGY = {
         'goroutines': 'Many efficient line cooks sharing a few stoves. They coordinate seamlessly and switch tasks instantly.',
         'threads': 'Dedicated chef per table. Expensive to hire, but each works independently with their own equipment.',
         'async-await': 'Chef with numbered tickets - starts each order, hands off to assistants, picks up when ready.',
+        'multiprocessing': 'Separate kitchens entirely. Complete isolation but hard to share ingredients (memory).',
     },
 }
 
@@ -91,6 +90,26 @@ http.createServer(async (req, res) => {
 
 // All requests share ONE thread`,
         },
+        python: {
+            model: 'async-await',
+            maxConcurrent: 1,
+            description: 'Asyncio event loop - similar to Node.js, blocks on CPU',
+            code: `import asyncio
+from aiohttp import web
+
+async def handle(request):
+    # Async I/O is non-blocking
+    data = await fetch_from_db()
+    
+    # ⚠️ CPU work blocks the loop without specialized executors
+    result = heavy_computation(data)
+    
+    return web.json_response(result)
+
+app = web.Application()
+app.add_routes([web.get('/', handle)])
+web.run_app(app)`,
+        },
         go: {
             model: 'goroutines',
             maxConcurrent: 1000,
@@ -102,13 +121,11 @@ func handler(w http.ResponseWriter, r *http.Request) {
     data := fetchFromDatabase()  // Non-blocking
     
     // CPU work doesn't block other goroutines
+    // Runtime multiplexes onto OS threads
     result := heavyComputation(data)
     
     json.NewEncoder(w).Encode(result)
-}
-
-// go handler() spawns instantly
-// Runtime multiplexes onto OS threads`,
+}`,
         },
         cpp: {
             model: 'threads',
@@ -172,6 +189,7 @@ const fileProcessingScenario: ConcurrencyScenario = {
             'goroutines': 'Team of researchers who split up, share tables, and help each other. Very efficient!',
             'threads': 'Hiring 50 research assistants - they work in parallel but coordination is complex.',
             'async-await': 'Researcher with a smart queue - requests all books upfront, processes as they arrive.',
+            'multiprocessing': '50 researchers in separate rooms. Can not share notes easily.',
         },
     },
     tasks: [
@@ -198,6 +216,23 @@ async function processFiles(files) {
   // ⚠️ CPU processing is sequential
   return contents.map(c => parseAndTransform(c));
 }`,
+        },
+        python: {
+            model: 'multiprocessing',
+            maxConcurrent: 4,
+            description: 'ProcessPoolExecutor to bypass GIL for CPU work',
+            code: `from concurrent.futures import ProcessPoolExecutor
+
+def process_file(filename):
+    data = read_file(filename)
+    return transform(data)  # CPU intensive
+
+def main():
+    # Use multiple processes to utilize all cores
+    with ProcessPoolExecutor() as executor:
+        results = list(executor.map(process_file, files))
+        
+# Fully parallel but high memory overhead`,
         },
         go: {
             model: 'goroutines',
@@ -247,6 +282,30 @@ async function processFiles(files) {
     return results;
 }`,
         },
+        rust: {
+            model: 'async-await',
+            maxConcurrent: 50, // Tokio handles many
+            description: 'Tokio fs::read with parallel processing',
+            code: `async fn process_files(files: Vec<String>) -> Vec<Result> {
+    let mut handles = vec![];
+
+    for file in files {
+        handles.push(tokio::spawn(async move {
+            let data = tokio::fs::read(file).await.unwrap();
+            // Move CPU work to thread pool
+            tokio::task::spawn_blocking(move || {
+                transform(data)
+            }).await.unwrap()
+        }));
+    }
+
+    let mut results = vec![];
+    for handle in handles {
+        results.push(handle.await.unwrap());
+    }
+    results
+}`
+        }
     },
 }
 
@@ -267,6 +326,7 @@ const apiAggregatorScenario: ConcurrencyScenario = {
             'goroutines': 'Send interns to all newsstands at once. They return with papers as ready.',
             'threads': 'Hire dedicated driver per newsstand. Expensive but truly parallel.',
             'async-await': 'Call all newsstands, they callback when ready. You process arrivals.',
+            'multiprocessing': 'Hire 5 separate agencies.',
         },
     },
     tasks: [
@@ -298,6 +358,28 @@ const apiAggregatorScenario: ConcurrencyScenario = {
 // Total time ≈ slowest request (1000ms)
 // Not sum of all (2550ms) - that's the power!`,
         },
+        python: {
+            model: 'async-await',
+            maxConcurrent: 5,
+            description: 'asyncio.gather for concurrent execution',
+            code: `import asyncio
+import aiohttp
+
+async def aggregate_data():
+    async with aiohttp.ClientSession() as session:
+        # Schedule all requests
+        tasks = [
+            fetch(session, '/users'),
+            fetch(session, '/posts'),
+            fetch(session, '/comments'),
+            fetch(session, '/analytics'),
+            fetch(session, '/ml'),
+        ]
+        
+        # Run concurrently
+        results = await asyncio.gather(*tasks)
+        return results`,
+        },
         go: {
             model: 'goroutines',
             maxConcurrent: 5,
@@ -326,6 +408,28 @@ const apiAggregatorScenario: ConcurrencyScenario = {
     wg.Wait()
     return results
 }`,
+        },
+        cpp: {
+            model: 'threads',
+            maxConcurrent: 5,
+            description: 'Futures for parallel execution',
+            code: `Result aggregateData() {
+    // Launch all async tasks
+    auto f1 = std::async(std::launch::async, fetchUsers);
+    auto f2 = std::async(std::launch::async, fetchPosts);
+    auto f3 = std::async(std::launch::async, fetchComments);
+    auto f4 = std::async(std::launch::async, fetchAnalytics);
+    auto f5 = std::async(std::launch::async, fetchML);
+
+    // Wait and gather
+    Result res;
+    res.users = f1.get();
+    res.posts = f2.get();
+    res.comments = f3.get();
+    res.analytics = f4.get();
+    res.recommendations = f5.get();
+    return res;
+}`
         },
         rust: {
             model: 'async-await',
