@@ -112,6 +112,7 @@ interface LabState {
     addMemoryBlock: (block: MemoryBlock) => void
     removeMemoryBlock: (id: string) => void
     updateMemoryBlock: (id: string, updates: Partial<MemoryBlock>) => void
+    setMemoryBlocks: (blocks: MemoryBlock[]) => void
     clearMemory: () => void
 
     // Concurrency simulation
@@ -151,7 +152,12 @@ interface LabState {
 export const useLabStore = create<LabState>((set) => ({
     // Language
     language: 'cpp',
-    setLanguage: (language) => set({ language, code: DEFAULT_CODE[language] }),
+    setLanguage: (language) => set({
+        language,
+        code: DEFAULT_CODE[language],
+        currentMemoryStep: 0,
+        memoryBlocks: []
+    }),
 
     // Code
     code: DEFAULT_CODE.cpp,
@@ -176,6 +182,7 @@ export const useLabStore = create<LabState>((set) => ({
             b.id === id ? { ...b, ...updates } : b
         )
     })),
+    setMemoryBlocks: (memoryBlocks) => set({ memoryBlocks }),
     clearMemory: () => set({ memoryBlocks: [] }),
 
     // Concurrency

@@ -50,47 +50,59 @@ export default function CodeStepperPanel({
   const highlightedLine = currentStepData?.lineNumber || -1
 
   return (
-    <div className="h-full flex flex-col bg-void-light rounded-lg border border-metal overflow-hidden">
+    <div className="h-full flex flex-col bg-void-light/40 rounded-2xl border border-metal/30 overflow-hidden backdrop-blur-sm shadow-xl">
       {/* Header */}
-      <div className={`flex items-center justify-between px-4 py-3 border-b border-metal bg-${config.color}/5`}>
+      <div className={`flex items-center justify-between px-5 py-4 border-b border-metal/30 bg-gradient-to-r from-${config.color}/10 to-transparent`}>
         <div className="flex items-center gap-3">
-          <span className="text-xl">{icon}</span>
+          <div className={`w-8 h-8 rounded-lg bg-void border border-${config.color}/30 flex items-center justify-center text-lg shadow-inner`}>
+            {icon}
+          </div>
           <div>
-            <h3 className={`font-code text-sm font-bold text-${config.color}`}>
+            <h3 className={`font-display text-[11px] font-bold text-chrome uppercase tracking-wider`}>
               {title}
             </h3>
-            <p className="text-[10px] text-steel">{config.name}</p>
+            <div className="flex items-center gap-2 mt-0.5">
+              <span className={`w-1.5 h-1.5 rounded-full bg-${config.color} shadow-[0_0_5px_var(--color-${config.color})]`} />
+              <p className="text-[9px] text-steel font-code uppercase opacity-70">{config.name} Source</p>
+            </div>
           </div>
         </div>
-        <div className="text-[10px] font-code text-steel">
-          Step {currentStep + 1} of {totalSteps}
+        <div className="text-[9px] font-code text-steel/60 bg-void/50 px-2 py-1 rounded-md border border-metal/20">
+          {currentStep + 1} <span className="mx-0.5">/</span> {totalSteps}
         </div>
       </div>
 
       {/* Code Display */}
-      <div className="flex-1 overflow-auto p-4">
-        <pre ref={codeRef} className="font-code text-xs leading-relaxed">
+      <div className="flex-1 overflow-auto p-4 custom-scrollbar bg-void/20">
+        <pre ref={codeRef} className="font-code text-[11px] leading-[1.8] text-silver/90">
           {code.split('\n').map((line, idx) => (
             <motion.div
               key={idx}
               animate={{
                 backgroundColor: highlightedLine === idx + 1 
-                  ? `var(--color-${config.color})20` 
+                  ? `var(--color-${config.color})15` 
                   : 'transparent',
                 x: highlightedLine === idx + 1 ? 4 : 0,
+                opacity: highlightedLine === idx + 1 ? 1 : 0.6
               }}
               className={`
-                code-line px-2 py-0.5 rounded transition-colors
+                code-line px-3 py-0.5 rounded-md transition-all group relative
                 ${highlightedLine === idx + 1 
                   ? `border-l-2 border-${config.color}` 
                   : 'border-l-2 border-transparent'
                 }
               `}
             >
-              <span className="inline-block w-6 text-steel/50 select-none">
-                {idx + 1}
+              {highlightedLine === idx + 1 && (
+                <div className={`absolute inset-0 bg-gradient-to-r from-${config.color}/5 to-transparent pointer-events-none rounded-md`} />
+              )}
+              <span className="inline-block w-8 text-steel/30 select-none font-bold">
+                {String(idx + 1).padStart(2, '0')}
               </span>
-              <span className={highlightedLine === idx + 1 ? 'text-chrome' : 'text-silver'}>
+              <span className={`
+                ${highlightedLine === idx + 1 ? 'text-chrome font-medium' : 'text-silver/80'}
+                transition-colors duration-300
+              `}>
                 {line || ' '}
               </span>
             </motion.div>
@@ -99,49 +111,51 @@ export default function CodeStepperPanel({
       </div>
 
       {/* Controls */}
-      <div className="flex items-center gap-2 px-4 py-3 border-t border-metal bg-void">
+      <div className="flex items-center gap-3 px-5 py-4 border-t border-metal/20 bg-void-light/60 backdrop-blur-md">
         <button
           onClick={onReset}
-          className="px-3 py-1.5 rounded border border-metal text-steel text-xs font-code hover:bg-metal/30 transition-colors"
+          className="p-2 rounded-lg border border-metal/30 text-steel text-xs font-code hover:bg-void hover:text-silver hover:border-metal transition-all active:scale-95"
           title="Reset"
         >
-          ↺ Reset
+          ↺
         </button>
         
         <div className="flex-1" />
         
-        <button
-          onClick={onPrevStep}
-          disabled={currentStep === 0}
-          className="px-3 py-1.5 rounded border border-metal text-silver text-xs font-code hover:bg-metal/30 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-        >
-          ← Prev
-        </button>
-        
-        <button
-          onClick={onPlayPause}
-          className={`
-            px-4 py-1.5 rounded border font-code text-xs transition-colors
-            ${isPlaying 
-              ? 'border-red-500 text-red-400 bg-red-500/10 hover:bg-red-500/20' 
-              : `border-${config.color} text-${config.color} bg-${config.color}/10 hover:bg-${config.color}/20`
-            }
-          `}
-        >
-          {isPlaying ? '■ Pause' : '▶ Play'}
-        </button>
-        
-        <button
-          onClick={onNextStep}
-          disabled={currentStep >= totalSteps - 1}
-          className={`
-            px-3 py-1.5 rounded border font-code text-xs transition-colors
-            border-${config.color} text-${config.color} hover:bg-${config.color}/20
-            disabled:opacity-30 disabled:cursor-not-allowed
-          `}
-        >
-          Next →
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={onPrevStep}
+            disabled={currentStep === 0}
+            className="w-10 h-8 flex items-center justify-center rounded-lg border border-metal/30 text-silver text-sm hover:bg-void hover:border-metal transition-all disabled:opacity-20 disabled:cursor-not-allowed active:scale-95"
+          >
+            ←
+          </button>
+          
+          <button
+            onClick={onPlayPause}
+            className={`
+              w-24 h-8 rounded-lg border font-code text-xs font-bold transition-all active:scale-95 shadow-lg
+              ${isPlaying 
+                ? 'border-red-500/50 text-red-500 bg-red-500/10 hover:bg-red-500/20 shadow-red-500/10' 
+                : `border-${config.color}/50 text-${config.color} bg-${config.color}/10 hover:bg-${config.color}/20 shadow-${config.color}/10`
+              }
+            `}
+          >
+            {isPlaying ? 'PAUSE' : 'PLAY'}
+          </button>
+          
+          <button
+            onClick={onNextStep}
+            disabled={currentStep >= totalSteps - 1}
+            className={`
+              w-10 h-8 flex items-center justify-center rounded-lg border font-bold transition-all active:scale-95
+              border-${config.color}/50 text-${config.color} bg-${config.color}/5 hover:bg-${config.color}/20
+              disabled:opacity-20 disabled:cursor-not-allowed
+            `}
+          >
+            →
+          </button>
+        </div>
       </div>
     </div>
   )
