@@ -28,6 +28,159 @@ BareMetal is an **interactive learning platform** that helps developers understa
 
 ---
 
+## 🔌 Godbolt Compiler Explorer API Integration
+
+BareMetal uses the **Godbolt Compiler Explorer API** to provide real-time assembly output for compiled languages (C++, Go, Rust). This allows users to see how their high-level code translates to machine instructions.
+
+### How It Works
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant MonacoEditor
+    participant useGodbolt Hook
+    participant Godbolt API
+    participant AssemblyView
+
+    User->>MonacoEditor: Types/edits code
+    MonacoEditor->>useGodbolt Hook: Code change (debounced 1000ms)
+    useGodbolt Hook->>Godbolt API: POST /api/compiler/{id}/compile
+    Godbolt API-->>useGodbolt Hook: Assembly output + source mapping
+    useGodbolt Hook->>AssemblyView: Formatted assembly
+    AssemblyView->>User: Displays highlighted assembly
+```
+
+### API Request Structure
+
+The hook sends a POST request to `https://godbolt.org/api/compiler/{compilerId}/compile`:
+
+```typescript
+// src/hooks/useGodbolt.ts
+const response = await fetch(
+  `https://godbolt.org/api/compiler/${compilerId}/compile`,
+  {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+    },
+    body: JSON.stringify({
+      source: sourceCode,
+      options: {
+        userArguments: lang === 'rust' ? '-O' : '-O2',
+        filters: {
+          binary: false,        // Don't show binary output
+          commentOnly: true,    // Strip compiler comments
+          demangle: true,       // Demangle C++ symbols
+          directives: true,     // Filter assembler directives
+          execute: false,       // Don't execute code
+          intel: true,          // Use Intel syntax
+          labels: true,         // Filter unused labels
+          libraryCode: false,   // Don't show library code
+          trim: true,           // Trim whitespace
+        },
+      },
+    }),
+  }
+);
+```
+
+### Supported Compilers
+
+| Language | Compiler ID | Compiler Version |
+|----------|-------------|------------------|
+| **C++** | `g132` | GCC 13.2 (x86-64) |
+| **Go** | `gccgo132` | GCC Go 13.2 (x86) |
+| **Rust** | `r1830` | rustc 1.83.0 |
+
+### API Response Handling
+
+The API returns assembly with source-line mapping:
+
+```typescript
+interface GodboltResponse {
+  asm: Array<{ text: string; source?: { line: number } }>;
+  code: number;           // Exit code (0 = success)
+  stderr?: Array<{ text: string }>;  // Compiler errors/warnings
+}
+```
+
+### Source-to-Assembly Mapping
+
+When you hover over a line in the source editor, the corresponding assembly lines are highlighted:
+
+```typescript
+// Build source-to-assembly mapping
+if (line.source?.line) {
+  if (!sourceToAsmMap[line.source.line]) {
+    sourceToAsmMap[line.source.line] = [];
+  }
+  sourceToAsmMap[line.source.line].push(asmLineNumber);
+}
+```
+
+### Simulated Bytecode (Interpreted Languages)
+
+Python and JavaScript don't use Godbolt. Instead, we generate **simulated bytecode** to show the conceptual intermediate representation:
+
+```typescript
+if (!compilerId) {
+  setSourceToAsmMap({});
+  return simulateBytecode(sourceCode, lang);
+}
+```
+
+---
+
+## 🔧 Feature Deep Dive
+
+### The Compiler Lab (`/labs/compiler`)
+
+**Purpose**: Show how source code transforms into machine instructions.
+
+**Components**:
+- `CompilerLab.tsx` - Main page component
+- `MonacoWrapper.tsx` - Code editor with syntax highlighting
+- `AssemblyView.tsx` - Formatted assembly output display
+- `CompilerScenarioSelector.tsx` - Pre-built code examples
+
+**Flow**:
+1. User selects a **scenario** (Hello World, Loops, Memory Allocation, Recursion)
+2. Code loads into **Monaco Editor**
+3. After 1000ms debounce, `useGodbolt` hook triggers API call
+4. **AssemblyView** displays formatted output with line numbers
+5. Hovering source code highlights corresponding assembly
+
+**Key Implementation Details**:
+- Rust functions must be `pub` to prevent optimizer from removing them
+- Rust uses `-O` optimization flag (not `-O2` like GCC/Clang)
+- API filters strip noise (directives, unused labels) for clean output
+
+### The Memory Lab (`/labs/memory`)
+
+Interactive scenarios demonstrating memory management concepts:
+- Heap vs Stack allocation
+- Garbage collection timing
+- Rust ownership and borrowing
+
+### The Concurrency Lab (`/labs/concurrency`)
+
+Visual comparison of concurrency models:
+- JavaScript Event Loop
+- Go Goroutines
+- Rust async/await
+- OS Threads
+
+### The Cost Lab (`/labs/cost`)
+
+Shows hidden performance costs of operations.
+
+### The Safety Lab (`/labs/safety`)
+
+Demonstrates runtime errors and safety guarantees.
+
+---
+
 ## 🚀 Quick Start
 
 ### Prerequisites
@@ -39,7 +192,7 @@ BareMetal is an **interactive learning platform** that helps developers understa
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/BareMetal.git
+git clone https://github.com/Anmolawasthi117/BareMetal.git
 cd BareMetal
 
 # Install dependencies
@@ -65,6 +218,7 @@ The app will be available at `http://localhost:5173`
 | **Code Editor** | Monaco Editor |
 | **Animations** | Framer Motion |
 | **Routing** | React Router 7 |
+| **Compiler API** | [Godbolt Compiler Explorer](https://godbolt.org/) |
 
 ---
 
@@ -73,29 +227,37 @@ The app will be available at `http://localhost:5173`
 ```
 BareMetal/
 ├── src/
-│   ├── components/          # Reusable UI components
-│   │   ├── editor/          # Monaco code editor components
-│   │   ├── layout/          # App shell, navigation, etc.
-│   │   └── visualizer/      # Visualization components
-│   ├── hooks/               # Custom React hooks
-│   ├── pages/               # Page components
-│   │   ├── Home.tsx         # Landing page
-│   │   └── labs/            # Individual lab pages
-│   │       ├── CompilerLab.tsx
-│   │       ├── MemoryLab.tsx
-│   │       ├── CostLab.tsx
-│   │       ├── ConcurrencyLab.tsx
-│   │       └── SafetyLab.tsx
-│   ├── store/               # Zustand state management
-│   │   └── useLabStore.ts   # Global lab state
-│   ├── App.tsx              # Root component with routing
-│   ├── main.tsx             # Entry point
-│   └── index.css            # Global styles & design tokens
-├── public/                  # Static assets
-├── index.html               # HTML entry
-├── vite.config.ts           # Vite configuration
-├── tsconfig.json            # TypeScript config
-├── eslint.config.js         # ESLint configuration
+│   ├── components/
+│   │   ├── editor/              # Monaco editor & assembly view
+│   │   │   ├── MonacoWrapper.tsx
+│   │   │   └── AssemblyView.tsx
+│   │   ├── compiler/            # Compiler lab components
+│   │   │   └── CompilerScenarioSelector.tsx
+│   │   ├── memory/              # Memory lab components
+│   │   ├── concurrency/         # Concurrency lab components
+│   │   └── layout/              # App shell, navigation
+│   ├── data/
+│   │   ├── compilerScenarios.ts   # Pre-built code examples
+│   │   ├── memoryScenarios.ts
+│   │   └── concurrencyScenarios.ts
+│   ├── hooks/
+│   │   ├── useGodbolt.ts        # ⭐ Godbolt API integration
+│   │   └── useDebounce.ts
+│   ├── pages/
+│   │   ├── Home.tsx
+│   │   └── labs/
+│   │       ├── CompilerLab.tsx   # Assembly visualization
+│   │       ├── MemoryLab.tsx     # Memory management
+│   │       ├── CostLab.tsx       # Performance costs
+│   │       ├── ConcurrencyLab.tsx # Thread models
+│   │       └── SafetyLab.tsx     # Error handling
+│   ├── store/
+│   │   └── useLabStore.ts       # Global state (code, language, output)
+│   ├── App.tsx
+│   ├── main.tsx
+│   └── index.css
+├── public/
+├── vite.config.ts
 └── package.json
 ```
 
@@ -169,23 +331,6 @@ We follow [Conventional Commits](https://www.conventionalcommits.org/):
 | `test:` | Adding or updating tests |
 | `chore:` | Maintenance tasks |
 
-### Code Style Guidelines
-
-- **TypeScript**: Use strict typing, avoid `any`
-- **React**: Functional components with hooks
-- **CSS**: Use Tailwind utilities; extend in `index.css` for custom styles
-- **Naming**: PascalCase for components, camelCase for functions/variables
-- **Files**: One component per file, co-locate related files
-
-### Pull Request Checklist
-
-- [ ] Code follows the project's style guidelines
-- [ ] Self-reviewed the code changes
-- [ ] Added/updated documentation if needed
-- [ ] No TypeScript/ESLint errors (`npm run lint`)
-- [ ] Application builds successfully (`npm run build`)
-- [ ] Tested changes locally
-
 ---
 
 ## 🐛 Reporting Issues
@@ -225,6 +370,7 @@ This project is licensed under the **MIT License** — see the [LICENSE](LICENSE
 - [Monaco Editor](https://microsoft.github.io/monaco-editor/) — Code editor
 - [Framer Motion](https://www.framer.com/motion/) — Animations
 - [Tailwind CSS](https://tailwindcss.com/) — Styling
+- [Godbolt Compiler Explorer](https://godbolt.org/) — Compiler API
 
 ---
 
