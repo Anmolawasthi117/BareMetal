@@ -8,7 +8,7 @@
 
 > **The Ultimate Runtime Visualizer** — An interactive educational platform to understand how programming languages work under the hood.
 
-![BareMetal Preview](./public/preview.png)
+![BareMetal Preview]((https://baremetal-sand.vercel.app/))
 
 ---
 
