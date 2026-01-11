@@ -1,4 +1,5 @@
 import { motion } from 'framer-motion'
+import { useRef, useEffect } from 'react'
 import { useLabStore, LANGUAGE_CONFIG } from '../../store/useLabStore'
 
 interface AssemblyViewProps {
@@ -14,6 +15,7 @@ export default function AssemblyView({
 }: AssemblyViewProps) {
   const { language } = useLabStore()
   const config = LANGUAGE_CONFIG[language]
+  const containerRef = useRef<HTMLDivElement>(null)
   
   // Determine if showing assembly or bytecode
   const isCompiled = ['cpp', 'go', 'rust'].includes(language)
@@ -21,6 +23,32 @@ export default function AssemblyView({
   const subtitle = isCompiled ? 'x86-64 / GCC -O2' : 'Virtual Machine Instructions'
 
   const lines = output.split('\n')
+
+  // Auto-scroll to highlighted line
+  useEffect(() => {
+    if (highlightedLines.length > 0 && containerRef.current) {
+      const lineIndex = highlightedLines[0] - 1
+      const element = containerRef.current.querySelector(`[data-line-index="${lineIndex}"]`) as HTMLElement
+      
+      if (element) {
+        // Calculate scroll position to center the element
+        // We use manual scroll calculation instead of scrollIntoView to prevent 
+        // the entire page from scrolling if the container is near the edge
+        const container = containerRef.current
+        const elementTop = element.offsetTop
+        const containerHeight = container.clientHeight
+        const elementHeight = element.clientHeight
+
+        // desired scroll top = element position - half container + half element
+        const targetScrollTop = elementTop - (containerHeight / 2) + (elementHeight / 2)
+        
+        container.scrollTo({
+          top: targetScrollTop,
+          behavior: 'smooth'
+        })
+      }
+    }
+  }, [highlightedLines])
 
   return (
     <div className="h-full w-full bg-void rounded-lg overflow-hidden border border-metal flex flex-col">
@@ -38,7 +66,10 @@ export default function AssemblyView({
       </div>
 
       {/* Output */}
-      <div className="flex-1 overflow-auto p-4 font-code text-sm">
+      <div 
+        ref={containerRef}
+        className="flex-1 overflow-auto p-4 font-code text-sm relative"
+      >
         {isLoading ? (
           <LoadingAnimation />
         ) : output ? (
@@ -51,6 +82,7 @@ export default function AssemblyView({
               return (
                 <motion.div
                   key={index}
+                  data-line-index={index}
                   initial={{ opacity: 0, x: -10 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: index * 0.01, duration: 0.1 }}

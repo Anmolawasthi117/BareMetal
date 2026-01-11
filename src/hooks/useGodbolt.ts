@@ -11,7 +11,7 @@ interface GodboltResponse {
 const COMPILER_IDS: Partial<Record<Language, string>> = {
     cpp: 'g132', // GCC 13.2
     go: 'gccgo132',
-    rust: 'r1750', // Rust 1.75.0
+    rust: 'r1830', // Rust 1.83.0
 }
 
 // Debounce hook
@@ -29,6 +29,7 @@ function useDebounce<T>(value: T, delay: number): T {
 export function useGodbolt() {
     const { code, language, setOutput, setIsLoading, isLoading, output } = useLabStore()
     const [error, setError] = useState<string | null>(null)
+    const [sourceToAsmMap, setSourceToAsmMap] = useState<Record<number, number[]>>({})
     const abortControllerRef = useRef<AbortController | null>(null)
 
     // Debounce code changes (1000ms as specified)
@@ -39,6 +40,7 @@ export function useGodbolt() {
 
         // Python and JS don't use Godbolt - simulate bytecode
         if (!compilerId) {
+            setSourceToAsmMap({})
             return simulateBytecode(sourceCode, lang)
         }
 
@@ -64,7 +66,7 @@ export function useGodbolt() {
                     body: JSON.stringify({
                         source: sourceCode,
                         options: {
-                            userArguments: '-O2',
+                            userArguments: lang === 'rust' ? '-O' : '-O2',
                             filters: {
                                 binary: false,
                                 commentOnly: true,
@@ -87,19 +89,31 @@ export function useGodbolt() {
 
             const data: GodboltResponse = await response.json()
 
+            const newSourceToAsmMap: Record<number, number[]> = {}
+
             // Format assembly output with line numbers
             const asmText = data.asm
                 .map((line, i) => {
                     const lineNum = String(i + 1).padStart(4, ' ')
                     const sourceRef = line.source?.line ? ` ; src:${line.source.line}` : ''
+
+                    if (line.source?.line) {
+                        if (!newSourceToAsmMap[line.source.line]) {
+                            newSourceToAsmMap[line.source.line] = []
+                        }
+                        // Store the 1-based index of the assembly line
+                        newSourceToAsmMap[line.source.line].push(i + 1)
+                    }
+
                     return `${lineNum} │ ${line.text}${sourceRef}`
                 })
                 .join('\n')
 
             setOutput(asmText || '; No assembly output')
+            setSourceToAsmMap(newSourceToAsmMap)
 
-            // Check for errors
-            if (data.stderr && data.stderr.length > 0) {
+            // Check for errors (only if compilation failed)
+            if (data.code !== 0 && data.stderr && data.stderr.length > 0) {
                 const errorText = data.stderr.map(e => e.text).join('\n')
                 setError(errorText)
             }
@@ -110,6 +124,7 @@ export function useGodbolt() {
             const message = err instanceof Error ? err.message : 'Unknown error'
             setError(message)
             setOutput(`; Error: ${message}`)
+            setSourceToAsmMap({})
         } finally {
             setIsLoading(false)
         }
@@ -147,6 +162,7 @@ export function useGodbolt() {
         output,
         isLoading,
         error,
+        sourceToAsmMap,
         refetch: () => fetchAssembly(code, language),
     }
 }

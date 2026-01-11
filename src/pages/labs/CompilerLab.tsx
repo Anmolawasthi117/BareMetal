@@ -15,7 +15,7 @@ export default function CompilerLab() {
     setCode
   } = useLabStore()
   
-  const { output, isLoading, error } = useGodbolt()
+  const { output, isLoading, error, sourceToAsmMap } = useGodbolt()
   const [hoveredLine, setHoveredLine] = useState<number | null>(null)
 
   const config = LANGUAGE_CONFIG[language]
@@ -38,7 +38,7 @@ export default function CompilerLab() {
   }, [currentCompilerScenario, language, setCode])
 
   return (
-    <div className="h-full flex flex-col p-6">
+    <div className="h-full flex flex-col p-6 overflow-hidden">
       {/* Header */}
       <div className="mb-6">
         <div className="flex items-center justify-between mb-4">
@@ -89,29 +89,32 @@ export default function CompilerLab() {
       </div>
 
       {/* Split Editor View */}
-      <div className="flex-1 grid grid-cols-2 gap-4 min-h-0">
+      <div className="flex-1 grid grid-cols-2 gap-4 h-full overflow-hidden">
         {/* Left: Code Editor */}
-        <div className="flex flex-col min-h-0">
-          <div className="text-[10px] font-code text-steel uppercase tracking-widest mb-2 flex items-center gap-2">
+        <div className="flex flex-col h-full overflow-hidden">
+          <div className="text-[10px] font-code text-steel uppercase tracking-widest mb-2 flex items-center gap-2 shrink-0">
             <span className="w-2 h-2 rounded-full bg-neon-py" />
             SOURCE CODE
           </div>
-          <div className="flex-1 min-h-0">
-            <MonacoWrapper height="100%" />
+          <div className="flex-1 h-full overflow-hidden">
+            <MonacoWrapper 
+              height="100%" 
+              onLineHover={setHoveredLine}
+            />
           </div>
         </div>
 
         {/* Right: Assembly/Bytecode Output */}
-        <div className="flex flex-col min-h-0">
-          <div className="text-[10px] font-code text-steel uppercase tracking-widest mb-2 flex items-center gap-2">
+        <div className="flex flex-col h-full overflow-hidden">
+          <div className="text-[10px] font-code text-steel uppercase tracking-widest mb-2 flex items-center gap-2 shrink-0">
             <span className={`w-2 h-2 rounded-full bg-${config.color}`} />
             {isCompiled ? 'ASSEMBLY' : 'BYTECODE'}
           </div>
-          <div className="flex-1 min-h-0">
+          <div className="flex-1 h-full overflow-hidden">
             <AssemblyView 
               output={output} 
               isLoading={isLoading}
-              highlightedLines={hoveredLine ? [hoveredLine] : []}
+              highlightedLines={hoveredLine ? (sourceToAsmMap[hoveredLine] || []) : []}
             />
           </div>
         </div>

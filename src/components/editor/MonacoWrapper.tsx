@@ -10,12 +10,14 @@ interface MonacoWrapperProps {
     content: string
     color?: string
   }>
+  onLineHover?: (lineNumber: number | null) => void
 }
 
 export default function MonacoWrapper({ 
   height = '100%', 
   readOnly = false,
-  decorations = []
+  decorations = [],
+  onLineHover
 }: MonacoWrapperProps) {
   const { code, setCode, language } = useLabStore()
   const editorRef = useRef<any>(null)
@@ -59,6 +61,21 @@ export default function MonacoWrapper({
     })
 
     monaco.editor.setTheme('baremetal')
+
+    // Handle mouse move for hover detection
+    editor.onMouseMove((e: any) => {
+      if (onLineHover && e.target && e.target.position) {
+        onLineHover(e.target.position.lineNumber)
+      } else if (onLineHover) {
+        onLineHover(null)
+      }
+    })
+
+    editor.onMouseLeave(() => {
+      if (onLineHover) {
+        onLineHover(null)
+      }
+    })
 
     // Apply decorations
     updateDecorations()

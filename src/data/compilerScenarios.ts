@@ -32,7 +32,7 @@ import "fmt"
 func main() {
     fmt.Println("Hello, World!")
 }`,
-            rust: `fn main() {
+            rust: `pub fn main() {
     println!("Hello, World!");
 }`
         }
@@ -79,7 +79,7 @@ func main() {
         }
     }
 }`,
-            rust: `fn main() {
+            rust: `pub fn main() {
     for i in 0..5 {
         if i % 2 == 0 {
             println!("Even: {}", i);
@@ -150,7 +150,7 @@ func main() {
     
     fmt.Printf("%d %d\\n", x, obj.val)
 }`,
-            rust: `fn main() {
+            rust: `pub fn main() {
     // Stack
     let x = 10;
     
@@ -203,14 +203,14 @@ func fib(n int) int {
 func main() {
     fmt.Println(fib(10))
 }`,
-            rust: `fn fib(n: u32) -> u32 {
+            rust: `pub fn fib(n: u32) -> u32 {
     if n <= 1 {
         return n;
     }
     fib(n - 1) + fib(n - 2)
 }
 
-fn main() {
+pub fn main() {
     println!("{}", fib(10));
 }`
         }
