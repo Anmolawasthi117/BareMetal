@@ -1,251 +1,293 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import BlockGrid, { LeakIndicator, GCSweeper } from '../../components/visualizer/memory/BlockGrid'
+import { useLabStore, LANGUAGE_CONFIG, MemoryBlock } from '../../store/useLabStore'
 import { LanguageSelector } from '../../components/editor/MonacoWrapper'
-import { useLabStore, MemoryBlock, LANGUAGE_CONFIG } from '../../store/useLabStore'
-
-type SimulationMode = 'manual' | 'ownership' | 'refcount' | 'gc'
-
-const MODE_INFO: Record<SimulationMode, { lang: string; title: string; desc: string }> = {
-  manual: { lang: 'cpp', title: 'Manual Memory', desc: 'new/delete - You control everything' },
-  ownership: { lang: 'rust', title: 'Ownership Model', desc: 'Move semantics - Memory freed when owner dies' },
-  refcount: { lang: 'python', title: 'Reference Counting', desc: 'Count references - Free at zero' },
-  gc: { lang: 'go', title: 'Garbage Collection', desc: 'Periodic sweeps - Runtime decides' },
-}
+import ScenarioSelector from '../../components/memory/ScenarioSelector'
+import CodeStepperPanel from '../../components/memory/CodeStepperPanel'
+import ExplanationPanel from '../../components/memory/ExplanationPanel'
+import BlockGrid, { LeakIndicator, GCSweeper } from '../../components/visualizer/memory/BlockGrid'
+import { getScenarioById, getScenariosByLanguage, MemoryStep } from '../../data/memoryScenarios'
 
 export default function MemoryLab() {
   const { 
-    language, 
-    memoryBlocks, 
-    addMemoryBlock, 
-    removeMemoryBlock, 
+    language,
+    memoryBlocks,
+    addMemoryBlock,
+    removeMemoryBlock,
     updateMemoryBlock,
     clearMemory,
-    isSimulating,
-    setIsSimulating
+    currentMemoryScenario,
+    currentMemoryStep,
+    setMemoryScenario,
+    setMemoryStep,
+    nextMemoryStep,
+    prevMemoryStep,
+    resetMemoryScenario,
   } = useLabStore()
   
-  const [mode, setMode] = useState<SimulationMode>('manual')
+  const [isPlaying, setIsPlaying] = useState(false)
   const [gcActive, setGcActive] = useState(false)
-  const [hasLeak, setHasLeak] = useState(false)
-
+  const [showScenarioPanel, setShowScenarioPanel] = useState(true)
+  const playIntervalRef = useRef<number | null>(null)
+  
   const config = LANGUAGE_CONFIG[language]
+  const scenario = currentMemoryScenario ? getScenarioById(currentMemoryScenario) : null
+  const scenarios = getScenariosByLanguage(language)
 
-  // Determine mode based on language
+  // Auto-select first scenario when language changes
   useEffect(() => {
-    switch (language) {
-      case 'cpp': setMode('manual'); break
-      case 'rust': setMode('ownership'); break
-      case 'python': setMode('refcount'); break
-      case 'go': 
-      case 'javascript': setMode('gc'); break
+    const langScenarios = getScenariosByLanguage(language)
+    if (langScenarios.length > 0 && (!scenario || scenario.language !== language)) {
+      setMemoryScenario(langScenarios[0].id)
     }
-  }, [language])
+  }, [language, scenario, setMemoryScenario])
 
-  // Generate unique ID
-  const genId = () => Math.random().toString(36).substr(2, 9)
+  // Process step action when step changes
+  useEffect(() => {
+    if (!scenario) return
+    const step = scenario.steps[currentMemoryStep]
+    if (!step) return
+    
+    executeStepAction(step)
+  }, [currentMemoryStep, scenario])
 
-  // Allocate memory
-  const allocate = useCallback((type: 'heap' | 'stack' = 'heap') => {
-    const block: MemoryBlock = {
-      id: genId(),
-      address: `0x${Math.random().toString(16).substr(2, 8).toUpperCase()}`,
-      size: Math.floor(Math.random() * 256) + 16,
-      status: 'allocated',
-      type,
-      refCount: mode === 'refcount' ? 1 : undefined,
-      owner: mode === 'ownership' ? 'main' : undefined,
-    }
-    addMemoryBlock(block)
-  }, [mode, addMemoryBlock])
-
-  // Free memory (C++ manual)
-  const free = useCallback((id: string) => {
-    if (mode === 'manual') {
-      removeMemoryBlock(id)
-    }
-  }, [mode, removeMemoryBlock])
-
-  // Add reference (Python)
-  const addRef = useCallback((id: string) => {
-    if (mode === 'refcount') {
-      const block = memoryBlocks.find(b => b.id === id)
-      if (block) {
-        updateMemoryBlock(id, { refCount: (block.refCount || 0) + 1 })
-      }
-    }
-  }, [mode, memoryBlocks, updateMemoryBlock])
-
-  // Remove reference (Python)
-  const releaseRef = useCallback((id: string) => {
-    if (mode === 'refcount') {
-      const block = memoryBlocks.find(b => b.id === id)
-      if (block && block.refCount !== undefined) {
-        const newCount = block.refCount - 1
-        if (newCount <= 0) {
-          // Animate countdown then remove
-          updateMemoryBlock(id, { refCount: 0 })
-          setTimeout(() => removeMemoryBlock(id), 500)
-        } else {
-          updateMemoryBlock(id, { refCount: newCount })
+  // Execute the memory action for a step
+  const executeStepAction = useCallback((step: MemoryStep) => {
+    const blockId = step.blockId || `block-${Date.now()}`
+    
+    switch (step.action) {
+      case 'allocate-heap':
+        addMemoryBlock({
+          id: blockId,
+          address: `0x${Math.random().toString(16).substr(2, 8).toUpperCase()}`,
+          size: step.blockSize || 64,
+          status: 'allocated',
+          type: 'heap',
+          owner: step.owner,
+          refCount: language === 'python' ? 1 : undefined,
+        })
+        break
+        
+      case 'allocate-stack':
+        addMemoryBlock({
+          id: blockId,
+          address: `0x${Math.random().toString(16).substr(2, 8).toUpperCase()}`,
+          size: step.blockSize || 32,
+          status: 'allocated',
+          type: 'stack',
+          owner: step.owner,
+        })
+        break
+        
+      case 'free':
+        if (step.blockId) {
+          // Animate to freed then remove
+          updateMemoryBlock(step.blockId, { status: 'freed' })
+          setTimeout(() => removeMemoryBlock(step.blockId!), 800)
         }
+        break
+        
+      case 'leak':
+        if (step.blockId) {
+          updateMemoryBlock(step.blockId, { status: 'leaked' })
+        }
+        break
+        
+      case 'transfer-ownership':
+        if (step.blockId && step.targetOwner) {
+          updateMemoryBlock(step.blockId, { owner: step.targetOwner })
+        }
+        break
+        
+      case 'add-reference':
+        if (step.blockId) {
+          const block = memoryBlocks.find(b => b.id === step.blockId)
+          if (block && block.refCount !== undefined) {
+            updateMemoryBlock(step.blockId, { refCount: block.refCount + 1 })
+          }
+        }
+        break
+        
+      case 'remove-reference':
+        if (step.blockId) {
+          const block = memoryBlocks.find(b => b.id === step.blockId)
+          if (block && block.refCount !== undefined) {
+            const newCount = block.refCount - 1
+            updateMemoryBlock(step.blockId, { refCount: newCount })
+            if (newCount <= 0) {
+              setTimeout(() => removeMemoryBlock(step.blockId!), 800)
+            }
+          }
+        }
+        break
+        
+      case 'gc-mark':
+        if (step.blockId) {
+          updateMemoryBlock(step.blockId, { status: 'garbage' })
+        }
+        break
+        
+      case 'gc-sweep':
+        setGcActive(true)
+        setTimeout(() => {
+          memoryBlocks
+            .filter(b => b.status === 'garbage')
+            .forEach(b => removeMemoryBlock(b.id))
+          setGcActive(false)
+        }, 1500)
+        break
+    }
+  }, [addMemoryBlock, updateMemoryBlock, removeMemoryBlock, memoryBlocks, language])
+
+  // Auto-play functionality
+  useEffect(() => {
+    if (isPlaying && scenario) {
+      playIntervalRef.current = window.setInterval(() => {
+        if (currentMemoryStep < scenario.steps.length - 1) {
+          nextMemoryStep()
+        } else {
+          setIsPlaying(false)
+        }
+      }, 2000)
+    }
+    
+    return () => {
+      if (playIntervalRef.current) {
+        clearInterval(playIntervalRef.current)
       }
     }
-  }, [mode, memoryBlocks, updateMemoryBlock, removeMemoryBlock])
+  }, [isPlaying, currentMemoryStep, scenario, nextMemoryStep])
 
-  // Transfer ownership (Rust)
-  const transferOwnership = useCallback((id: string, newOwner: string) => {
-    if (mode === 'ownership') {
-      updateMemoryBlock(id, { owner: newOwner })
-    }
-  }, [mode, updateMemoryBlock])
+  const handlePlayPause = () => {
+    setIsPlaying(!isPlaying)
+  }
 
-  // GC Sweep
-  const runGC = useCallback(() => {
-    setGcActive(true)
-    const garbageBlocks = memoryBlocks.filter(b => b.status === 'garbage')
-    
-    setTimeout(() => {
-      garbageBlocks.forEach(b => {
-        updateMemoryBlock(b.id, { status: 'freed' })
-      })
-      setTimeout(() => {
-        garbageBlocks.forEach(b => removeMemoryBlock(b.id))
-        setGcActive(false)
-      }, 500)
-    }, 1000)
-  }, [memoryBlocks, updateMemoryBlock, removeMemoryBlock])
+  const handleReset = () => {
+    setIsPlaying(false)
+    resetMemoryScenario()
+  }
 
-  // Mark as garbage (for GC mode)
-  const markGarbage = useCallback((id: string) => {
-    if (mode === 'gc') {
-      updateMemoryBlock(id, { status: 'garbage' })
-    }
-  }, [mode, updateMemoryBlock])
+  const handleSelectScenario = (id: string) => {
+    setIsPlaying(false)
+    setMemoryScenario(id)
+    setShowScenarioPanel(false)
+  }
 
-  // Check for leaks
-  useEffect(() => {
-    if (mode === 'manual') {
-      const leakedBlocks = memoryBlocks.filter(b => b.status === 'allocated' && b.type === 'heap')
-      setHasLeak(leakedBlocks.length > 0)
-    } else {
-      setHasLeak(false)
-    }
-  }, [memoryBlocks, mode])
-
-  // Simulate scope exit (frees stack, orphans heap in C++)
-  const exitScope = useCallback(() => {
-    // Free stack
-    memoryBlocks
-      .filter(b => b.type === 'stack')
-      .forEach(b => removeMemoryBlock(b.id))
-    
-    // In C++, heap becomes leaked
-    if (mode === 'manual') {
-      memoryBlocks
-        .filter(b => b.type === 'heap' && b.status === 'allocated')
-        .forEach(b => updateMemoryBlock(b.id, { status: 'leaked' }))
-    }
-    
-    // In Rust, owned heap is freed
-    if (mode === 'ownership') {
-      memoryBlocks
-        .filter(b => b.type === 'heap')
-        .forEach(b => removeMemoryBlock(b.id))
-    }
-  }, [memoryBlocks, mode, removeMemoryBlock, updateMemoryBlock])
+  const hasLeak = memoryBlocks.some(b => b.status === 'leaked')
+  const currentStep = scenario?.steps[currentMemoryStep] || null
 
   return (
     <div className="h-full flex flex-col p-6">
       {/* Header */}
-      <div className="mb-6">
-        <div className="flex items-center justify-between mb-4">
+      <div className="mb-4">
+        <div className="flex items-center justify-between mb-3">
           <div>
             <h1 className="text-2xl font-display font-bold text-chrome flex items-center gap-3">
               <span className="text-3xl">▦</span>
               THE MEMORY LAB
             </h1>
             <p className="text-silver text-sm mt-1">
-              Visualize how different languages manage memory
+              Step through code and watch memory management in action
             </p>
           </div>
-          <LanguageSelector />
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setShowScenarioPanel(!showScenarioPanel)}
+              className={`
+                px-3 py-1.5 rounded border font-code text-xs transition-colors
+                ${showScenarioPanel 
+                  ? `border-${config.color} text-${config.color} bg-${config.color}/10` 
+                  : 'border-metal text-steel hover:border-steel'
+                }
+              `}
+            >
+              {showScenarioPanel ? '✕ Close' : '📚 Scenarios'}
+            </button>
+            <LanguageSelector />
+          </div>
         </div>
 
-        {/* Mode Info */}
-        <motion.div
-          key={mode}
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className={`p-4 rounded-lg border border-${config.color}/30 bg-${config.color}/5`}
-        >
-          <div className="flex items-center gap-4">
-            <div className={`text-2xl text-${config.color}`}>
-              {mode === 'manual' ? '🔓' : mode === 'ownership' ? '🔗' : mode === 'refcount' ? '🔢' : '🗑'}
-            </div>
-            <div>
+        {/* Mode indicator */}
+        {scenario && (
+          <motion.div
+            key={scenario.id}
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className={`flex items-center gap-4 p-3 rounded-lg border border-${config.color}/30 bg-${config.color}/5`}
+          >
+            <span className="text-2xl">{scenario.icon}</span>
+            <div className="flex-1">
               <h3 className={`font-code text-sm font-bold text-${config.color}`}>
-                {MODE_INFO[mode].title.toUpperCase()}
+                {scenario.title}
               </h3>
-              <p className="text-steel text-xs mt-0.5">{MODE_INFO[mode].desc}</p>
+              <p className="text-[10px] text-steel">{scenario.description}</p>
             </div>
             {hasLeak && <LeakIndicator />}
-          </div>
-        </motion.div>
-      </div>
-
-      {/* Control Panel */}
-      <div className="flex items-center gap-4 mb-4 p-3 bg-void-light rounded-lg border border-metal">
-        <button
-          onClick={() => allocate('heap')}
-          className="px-4 py-2 bg-neon-cpp/20 border border-neon-cpp/50 rounded text-neon-cpp text-xs font-code uppercase hover:bg-neon-cpp/30 transition-colors"
-        >
-          Allocate Heap
-        </button>
-        <button
-          onClick={() => allocate('stack')}
-          className="px-4 py-2 bg-neon-go/20 border border-neon-go/50 rounded text-neon-go text-xs font-code uppercase hover:bg-neon-go/30 transition-colors"
-        >
-          Allocate Stack
-        </button>
-        
-        {mode === 'gc' && (
-          <button
-            onClick={runGC}
-            disabled={gcActive}
-            className="px-4 py-2 bg-neon-py/20 border border-neon-py/50 rounded text-neon-py text-xs font-code uppercase hover:bg-neon-py/30 transition-colors disabled:opacity-50"
-          >
-            {gcActive ? 'Sweeping...' : 'Run GC'}
-          </button>
+          </motion.div>
         )}
-        
-        <button
-          onClick={exitScope}
-          className="px-4 py-2 bg-neon-rust/20 border border-neon-rust/50 rounded text-neon-rust text-xs font-code uppercase hover:bg-neon-rust/30 transition-colors"
-        >
-          Exit Scope
-        </button>
-        
-        <button
-          onClick={clearMemory}
-          className="ml-auto px-4 py-2 bg-metal/30 border border-metal rounded text-steel text-xs font-code uppercase hover:bg-metal/50 transition-colors"
-        >
-          Clear All
-        </button>
       </div>
 
-      {/* Memory Visualization */}
-      <div className="flex-1 min-h-0 relative">
-        <BlockGrid 
-          blocks={memoryBlocks} 
+      {/* Main Content */}
+      <div className="flex-1 min-h-0 flex gap-4">
+        {/* Scenario Panel (collapsible sidebar) */}
+        <AnimatePresence>
+          {showScenarioPanel && (
+            <motion.div
+              initial={{ width: 0, opacity: 0 }}
+              animate={{ width: 280, opacity: 1 }}
+              exit={{ width: 0, opacity: 0 }}
+              className="overflow-hidden"
+            >
+              <div className="w-[280px] h-full bg-void-light rounded-lg border border-metal p-4 overflow-y-auto">
+                <ScenarioSelector
+                  language={language}
+                  currentScenario={currentMemoryScenario}
+                  onSelectScenario={handleSelectScenario}
+                />
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Code Stepper Panel */}
+        <div className="w-1/3 min-w-[300px]">
+          {scenario ? (
+            <CodeStepperPanel
+              scenario={scenario}
+              currentStep={currentMemoryStep}
+              totalSteps={scenario.steps.length}
+              onPrevStep={prevMemoryStep}
+              onNextStep={nextMemoryStep}
+              onReset={handleReset}
+              isPlaying={isPlaying}
+              onPlayPause={handlePlayPause}
+            />
+          ) : (
+            <div className="h-full flex items-center justify-center bg-void-light rounded-lg border border-metal">
+              <p className="text-steel text-sm">Select a scenario to begin</p>
+            </div>
+          )}
+        </div>
+
+        {/* Memory Visualization */}
+        <div className="flex-1 min-w-0 relative">
+          <BlockGrid 
+            blocks={memoryBlocks} 
+            language={language}
+            onBlockClick={() => {}}
+          />
+          <GCSweeper active={gcActive} />
+        </div>
+      </div>
+
+      {/* Explanation Panel */}
+      <div className="mt-4">
+        <ExplanationPanel
+          step={currentStep}
           language={language}
-          onBlockClick={(block) => {
-            if (mode === 'manual') free(block.id)
-            if (mode === 'refcount') releaseRef(block.id)
-            if (mode === 'gc') markGarbage(block.id)
-          }}
+          stepNumber={currentMemoryStep}
+          totalSteps={scenario?.steps.length || 0}
         />
-        <GCSweeper active={gcActive} />
       </div>
 
       {/* Legend */}

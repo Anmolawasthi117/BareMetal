@@ -128,6 +128,19 @@ interface LabState {
     setIsSimulating: (simulating: boolean) => void
     simulationSpeed: number
     setSimulationSpeed: (speed: number) => void
+
+    // Memory Lab Scenarios
+    currentMemoryScenario: string | null
+    currentMemoryStep: number
+    setMemoryScenario: (id: string | null) => void
+    setMemoryStep: (step: number) => void
+    nextMemoryStep: () => void
+    prevMemoryStep: () => void
+    resetMemoryScenario: () => void
+
+    // Concurrency Lab Scenarios
+    currentConcurrencyScenario: string | null
+    setConcurrencyScenario: (id: string | null) => void
 }
 
 export const useLabStore = create<LabState>((set) => ({
@@ -177,4 +190,19 @@ export const useLabStore = create<LabState>((set) => ({
     setIsSimulating: (isSimulating) => set({ isSimulating }),
     simulationSpeed: 1,
     setSimulationSpeed: (simulationSpeed) => set({ simulationSpeed }),
+
+    // Memory Lab Scenarios
+    currentMemoryScenario: null,
+    currentMemoryStep: 0,
+    setMemoryScenario: (id) => set({ currentMemoryScenario: id, currentMemoryStep: 0, memoryBlocks: [] }),
+    setMemoryStep: (step) => set({ currentMemoryStep: step }),
+    nextMemoryStep: () => set((state) => ({ currentMemoryStep: state.currentMemoryStep + 1 })),
+    prevMemoryStep: () => set((state) => ({
+        currentMemoryStep: Math.max(0, state.currentMemoryStep - 1)
+    })),
+    resetMemoryScenario: () => set({ currentMemoryStep: 0, memoryBlocks: [] }),
+
+    // Concurrency Lab Scenarios
+    currentConcurrencyScenario: null,
+    setConcurrencyScenario: (id) => set({ currentConcurrencyScenario: id, tasks: [] }),
 }))
