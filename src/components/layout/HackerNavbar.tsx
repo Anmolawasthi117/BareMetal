@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { useLabStore, LANGUAGE_CONFIG } from '../../store/useLabStore'
+import logo from '../../assets/baremetal_logo.png'
 
 export default function HackerNavbar() {
   const { language, isLoading, isSimulating } = useLabStore()
@@ -59,11 +60,13 @@ export default function HackerNavbar() {
 
       {/* Logo */}
       <div className="flex items-center gap-3">
-        <div className="w-8 h-8 rounded border border-metal bg-void flex items-center justify-center">
-          <motion.div
+        <div className="w-8 h-8 rounded border border-metal bg-void flex items-center justify-center overflow-hidden">
+          <motion.img
+            src={logo}
+            alt="BareMetal Logo"
+            className="w-5 h-5 object-contain"
             animate={{ rotate: isLoading ? 360 : 0 }}
-            transition={{ duration: 1, repeat: isLoading ? Infinity : 0, ease: 'linear' }}
-            className="w-4 h-4 border-2 border-neon-cpp border-t-transparent rounded-full"
+            transition={{ duration: 2, repeat: isLoading ? Infinity : 0, ease: 'linear' }}
           />
         </div>
         <div>

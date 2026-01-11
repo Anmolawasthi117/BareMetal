@@ -1,5 +1,6 @@
+import { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { MemoryBlock } from '../../store/useLabStore'
+import { MemoryBlock } from '../../../store/useLabStore'
 
 interface BlockGridProps {
   blocks: MemoryBlock[]
@@ -11,26 +12,53 @@ export default function BlockGrid({ blocks, language, onBlockClick }: BlockGridP
   // Separate heap and stack blocks
   const heapBlocks = blocks.filter(b => b.type === 'heap')
   const stackBlocks = blocks.filter(b => b.type === 'stack')
+  const containerRef = useRef<HTMLDivElement>(null)
 
   return (
-    <div className="h-full flex gap-6 p-4">
+    <div ref={containerRef} className="h-full flex gap-12 p-4 relative">
+      {/* SVG Layer for Pointers */}
+      <svg className="absolute inset-0 pointer-events-none w-full h-full z-10">
+        <defs>
+          <marker
+            id="arrowhead"
+            markerWidth="10"
+            markerHeight="7"
+            refX="9"
+            refY="3.5"
+            orient="auto"
+          >
+            <polygon points="0 0, 10 3.5, 0 7" fill="var(--color-neon-rust)" />
+          </marker>
+        </defs>
+        {blocks.filter(b => b.pointsTo).map(block => {
+          return (
+            <PointerArrow 
+              key={`ptr-${block.id}`} 
+              fromId={block.id} 
+              toId={block.pointsTo!} 
+              containerRef={containerRef}
+            />
+          )
+        })}
+      </svg>
+
       {/* Stack Section */}
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col justify-end">
         <div className="text-[10px] font-code text-steel uppercase tracking-widest mb-3 flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-neon-go" />
+          <span className="w-2 h-2 rounded-full bg-neon-go shadow-[0_0_8px_var(--color-neon-go)]" />
           STACK (LIFO)
         </div>
-        <div className="flex-1 bg-void-light rounded-lg border border-metal p-4 relative overflow-hidden">
-          {/* Stack grows downward visualization */}
-          <div className="absolute top-2 left-1/2 -translate-x-1/2 text-[10px] text-steel font-code">
-            HIGH ADDRESS ↑
+        <div className="bg-void-light/50 rounded-xl border-2 border-metal/30 p-6 relative overflow-hidden backdrop-blur-sm min-h-[400px]">
+          <div className="absolute top-2 left-1/2 -translate-x-1/2 text-[8px] text-steel/50 font-code uppercase tracking-tighter">
+            High Address (0x7FFF...)
           </div>
           
-          <div className="flex flex-col-reverse gap-2 mt-6">
+          <div className="flex flex-col-reverse gap-3 mt-6">
             <AnimatePresence mode="popLayout">
               {stackBlocks.map((block) => (
                 <MemoryBlockCard 
                   key={block.id} 
+                  id={block.id}
                   block={block} 
                   language={language}
                   onClick={() => onBlockClick?.(block)}
@@ -39,14 +67,8 @@ export default function BlockGrid({ blocks, language, onBlockClick }: BlockGridP
             </AnimatePresence>
           </div>
           
-          {stackBlocks.length === 0 && (
-            <div className="h-full flex items-center justify-center text-steel text-sm">
-              Stack is empty
-            </div>
-          )}
-
-          <div className="absolute bottom-2 left-1/2 -translate-x-1/2 text-[10px] text-steel font-code">
-            ↓ LOW ADDRESS
+          <div className="absolute bottom-2 left-1/2 -translate-x-1/2 text-[8px] text-steel/50 font-code uppercase tracking-tighter">
+            Low Address (0x0000...)
           </div>
         </div>
       </div>
@@ -54,15 +76,16 @@ export default function BlockGrid({ blocks, language, onBlockClick }: BlockGridP
       {/* Heap Section */}
       <div className="flex-1 flex flex-col">
         <div className="text-[10px] font-code text-steel uppercase tracking-widest mb-3 flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-neon-rust" />
+          <span className="w-2 h-2 rounded-full bg-neon-rust shadow-[0_0_8px_var(--color-neon-rust)]" />
           HEAP (DYNAMIC)
         </div>
-        <div className="flex-1 bg-void-light rounded-lg border border-metal p-4 relative overflow-hidden">
-          <div className="grid grid-cols-4 gap-2">
+        <div className="flex-1 bg-void-light/50 rounded-xl border-2 border-metal/30 p-6 relative overflow-hidden backdrop-blur-sm">
+          <div className="grid grid-cols-2 gap-4">
             <AnimatePresence mode="popLayout">
               {heapBlocks.map((block) => (
                 <MemoryBlockCard 
                   key={block.id} 
+                  id={block.id}
                   block={block} 
                   language={language}
                   onClick={() => onBlockClick?.(block)}
@@ -70,15 +93,68 @@ export default function BlockGrid({ blocks, language, onBlockClick }: BlockGridP
               ))}
             </AnimatePresence>
           </div>
-          
-          {heapBlocks.length === 0 && (
-            <div className="h-full flex items-center justify-center text-steel text-sm">
-              Heap is empty
-            </div>
-          )}
         </div>
       </div>
     </div>
+  )
+}
+
+// ARROW COMPONENT
+function PointerArrow({ 
+  fromId, 
+  toId, 
+  containerRef 
+}: { 
+  fromId: string, 
+  toId: string, 
+  containerRef: React.RefObject<HTMLDivElement | null> 
+}) {
+  const [coords, setCoords] = useState<{ x1: number, y1: number, x2: number, y2: number } | null>(null)
+
+  useEffect(() => {
+    const updateCoords = () => {
+      const fromEl = document.getElementById(fromId)
+      const toEl = document.getElementById(toId)
+      const containerEl = containerRef.current
+
+      if (fromEl && toEl && containerEl) {
+        const fromRect = fromEl.getBoundingClientRect()
+        const toRect = toEl.getBoundingClientRect()
+        const containerRect = containerEl.getBoundingClientRect()
+
+        setCoords({
+          x1: fromRect.right - containerRect.left,
+          y1: fromRect.top + fromRect.height / 2 - containerRect.top,
+          x2: toRect.left - containerRect.left,
+          y2: toRect.top + toRect.height / 2 - containerRect.top
+        })
+      }
+    }
+
+    updateCoords()
+    window.addEventListener('resize', updateCoords)
+    const timeout = setTimeout(updateCoords, 100)
+    return () => {
+      window.removeEventListener('resize', updateCoords)
+      clearTimeout(timeout)
+    }
+  }, [fromId, toId, containerRef])
+
+  if (!coords) return null
+
+  return (
+    <motion.line
+      initial={{ pathLength: 0, opacity: 0 }}
+      animate={{ pathLength: 1, opacity: 1 }}
+      x1={coords.x1}
+      y1={coords.y1}
+      x2={coords.x2}
+      y2={coords.y2}
+      stroke="var(--color-neon-rust)"
+      strokeWidth="2"
+      strokeDasharray="4 2"
+      markerEnd="url(#arrowhead)"
+    />
   )
 }
 
@@ -86,10 +162,12 @@ export default function BlockGrid({ blocks, language, onBlockClick }: BlockGridP
 function MemoryBlockCard({ 
   block, 
   language,
+  id,
   onClick 
 }: { 
   block: MemoryBlock
   language: string
+  id?: string
   onClick?: () => void
 }) {
   const getStatusColor = () => {

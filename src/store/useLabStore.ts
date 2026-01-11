@@ -76,6 +76,7 @@ export interface MemoryBlock {
     size: number
     owner?: string
     refCount?: number
+    pointsTo?: string // ID of another block this one points to
     status: 'allocated' | 'freed' | 'leaked' | 'garbage'
     type: 'heap' | 'stack'
 }

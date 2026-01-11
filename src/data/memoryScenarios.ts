@@ -26,6 +26,7 @@ export interface MemoryStep {
     blockSize?: number
     owner?: string
     targetOwner?: string
+    pointsTo?: string
 }
 
 export interface ScenarioImplementation {
@@ -48,7 +49,7 @@ export interface MemoryScenario {
 const allocationScenario: MemoryScenario = {
     id: 'allocation',
     title: 'Object Lifecycle',
-    description: 'How memory is allocated, used, and freed.',
+    description: 'How memory is allocated, used, and freed across different languages.',
     icon: '📦',
     implementations: {
         cpp: {
@@ -67,29 +68,33 @@ const allocationScenario: MemoryScenario = {
                 {
                     lineNumber: 3,
                     code: 'int* data = new int[100];',
-                    explanation: '📦 HEAP: Allocating 400 bytes manually. We are responsible for this memory.',
+                    explanation: '📦 HEAP: Allocating 400 bytes manually. It is stored on the HEAP.',
                     action: 'allocate-heap',
-                    blockId: 'cpp-block',
+                    blockId: 'cpp-heap-block',
                     blockSize: 400
+                },
+                {
+                    lineNumber: 3,
+                    code: 'int* data = new int[100];',
+                    explanation: '📍 STACK: The pointer variable `data` holds the address of the heap memory.',
+                    action: 'allocate-stack',
+                    blockId: 'cpp-stack-ptr',
+                    owner: 'data',
+                    pointsTo: 'cpp-heap-block',
+                    blockSize: 8
                 },
                 {
                     lineNumber: 6,
                     code: 'process(data);',
-                    explanation: '⚙️ USING: The pointer is valid. Reading/Writing allowed.',
+                    explanation: '⚙️ USING: We follow the pointer from the stack to the heap to read/write data.',
                     action: 'scope-enter'
                 },
                 {
                     lineNumber: 9,
                     code: 'delete[] data;',
-                    explanation: '🧹 FREE: Manually returning memory to OS. Critical step!',
+                    explanation: '🧹 FREE: Returning the heap memory. Note: the stack pointer `data` still exists but points to garbage!',
                     action: 'free',
-                    blockId: 'cpp-block'
-                },
-                {
-                    lineNumber: 10,
-                    code: 'data = nullptr;',
-                    explanation: '🛡️ NULL: Preventing dangling pointer usage.',
-                    action: 'scope-exit'
+                    blockId: 'cpp-heap-block'
                 }
             ]
         },
@@ -108,72 +113,85 @@ const allocationScenario: MemoryScenario = {
                 {
                     lineNumber: 3,
                     code: 'let s1 = String::from("hello");',
-                    explanation: '📦 OWNER: s1 owns the heap memory. Rust tracks this.',
+                    explanation: '📦 HEAP: "hello" is on the heap. STACK: `s1` (the owner) holds its address.',
                     action: 'allocate-heap',
-                    blockId: 'rust-block',
-                    blockSize: 24,
-                    owner: 's1'
+                    blockId: 'rust-heap-block',
+                    blockSize: 5
+                },
+                {
+                    lineNumber: 3,
+                    code: 'let s1 = String::from("hello");',
+                    explanation: '📍 STACK: `s1` is the current owner of the heap memory.',
+                    action: 'allocate-stack',
+                    blockId: 'rust-stack-s1',
+                    owner: 's1',
+                    pointsTo: 'rust-heap-block',
+                    blockSize: 24
                 },
                 {
                     lineNumber: 6,
                     code: 'let s2 = s1;',
-                    explanation: '🔄 MOVE: Ownership transfers to s2. s1 is now invalid (compile-time check).',
+                    explanation: '🔄 MOVE: Ownership transfers to `s2`. `s1` is now invalid, and `s2` now points to the heap.',
                     action: 'transfer-ownership',
-                    blockId: 'rust-block',
+                    blockId: 'rust-stack-s1',
                     owner: 's1',
                     targetOwner: 's2'
                 },
                 {
                     lineNumber: 9,
                     code: '// s2 dropped here',
-                    explanation: '🔥 DROP: Scope ends. Rust automatically frees s2\'s memory. No leaks.',
+                    explanation: '🔥 DROP: `s2` goes out of scope. Rust automatically frees the heap memory. No manual free or GC needed!',
                     action: 'free',
-                    blockId: 'rust-block'
+                    blockId: 'rust-heap-block'
                 }
             ]
         },
         python: {
             code: `def main():
-    # 1. Object Creation (Ref Count = 1)
+    # 1. Object Creation
     data = [1, 2, 3]
     
-    # 2. Reference (Ref Count = 2)
+    # 2. Reference (Aliasing)
     alias = data
     
-    # 3. Del Reference (Ref Count = 1)
+    # 3. Del Reference
     del alias
-    
-    # 4. End Scope (Ref Count = 0)
 }`,
             steps: [
                 {
                     lineNumber: 3,
                     code: 'data = [1, 2, 3]',
-                    explanation: '📦 ALLOC: List created. RefCount = 1 (data).',
+                    explanation: '📦 HEAP: List created on heap. RefCount = 1.',
                     action: 'allocate-heap',
-                    blockId: 'py-block',
+                    blockId: 'py-heap-obj',
                     blockSize: 64
+                },
+                {
+                    lineNumber: 3,
+                    code: 'data = [1, 2, 3]',
+                    explanation: '📍 STACK: `data` name assigned to heap object.',
+                    action: 'allocate-stack',
+                    blockId: 'py-stack-data',
+                    owner: 'data',
+                    pointsTo: 'py-heap-obj',
+                    blockSize: 8
                 },
                 {
                     lineNumber: 6,
                     code: 'alias = data',
-                    explanation: '🔗 REF: New reference. RefCount = 2.',
-                    action: 'add-reference',
-                    blockId: 'py-block'
+                    explanation: '🔗 REF: `alias` now points to the same object. RefCount = 2.',
+                    action: 'allocate-stack',
+                    blockId: 'py-stack-alias',
+                    owner: 'alias',
+                    pointsTo: 'py-heap-obj',
+                    blockSize: 8
                 },
                 {
                     lineNumber: 9,
                     code: 'del alias',
-                    explanation: '✂️ DEREF: Reference removed. RefCount = 1.',
-                    action: 'remove-reference',
-                    blockId: 'py-block'
-                },
-                {
-                    lineNumber: 11,
-                    code: '# 4. End Scope (Ref Count = 0)',
-                    explanation: '♻️ GC: Scope ends, data lost. RefCount -> 0. Python frees it.',
+                    explanation: '✂️ DEREF: `alias` removed from stack. RefCount = 1.',
                     action: 'free',
-                    blockId: 'py-block'
+                    blockId: 'py-stack-alias'
                 }
             ]
         },
@@ -182,86 +200,78 @@ const allocationScenario: MemoryScenario = {
     // 1. Allocation
     let obj = { id: 1 };
     
-    // 2. Reference
-    let ref = obj;
-    
-    // 3. Unreachable
+    // 2. Unreachable
     obj = null;
-    ref = null;
     
-    // 4. GC Collects later
+    // 3. GC Collects later
 }`,
             steps: [
                 {
-                    lineNumber: 3,
+                    lineNumber: 2,
                     code: 'let obj = { id: 1 };',
-                    explanation: '📦 ALLOC: Object created on V8 Heap.',
+                    explanation: '📦 HEAP: Object created in the V8 nursery.',
                     action: 'allocate-heap',
                     blockId: 'js-block',
                     blockSize: 32
                 },
                 {
-                    lineNumber: 6,
-                    code: 'let ref = obj;',
-                    explanation: '🔗 MARK: Another reference points to this object.',
-                    action: 'add-reference' // Visual distinction mostly
+                    lineNumber: 2,
+                    code: 'let obj = { id: 1 };',
+                    explanation: '📍 STACK: `obj` variable holds the reference.',
+                    action: 'allocate-stack',
+                    blockId: 'js-stack-ptr',
+                    owner: 'obj',
+                    pointsTo: 'js-block',
+                    blockSize: 8
                 },
                 {
-                    lineNumber: 9,
+                    lineNumber: 5,
                     code: 'obj = null;',
-                    explanation: '👻 DETACH: Broken one link. Object still reachable via ref.',
-                    action: 'remove-reference'
+                    explanation: '👻 DETACH: Reference cleared. Object is now unreachable (Garbage!).',
+                    action: 'free',
+                    blockId: 'js-stack-ptr'
                 },
                 {
-                    lineNumber: 10,
-                    code: 'ref = null;',
-                    explanation: '🗑️ GARBAGE: No references left! Marked for sweep.',
-                    action: 'gc-mark',
+                    lineNumber: 8,
+                    code: '// GC Cycle',
+                    explanation: '🗑️ SWEEP: The Garbage Collector identifies unreachable objects and reclaims them.',
+                    action: 'gc-sweep',
                     blockId: 'js-block'
                 }
             ]
         },
         go: {
             code: `func main() {
-    // 1. Make (Escape to Heap)
-    data := make([]int, 100)
+    // 1. Slice (Escape to Heap)
+    data := make([]int, 10)
     
     // 2. Use
     process(data)
-    
-    // 3. Out of Scope / Nil
-    data = nil
-    
-    // 4. GC runs eventually
 }`,
             steps: [
                 {
                     lineNumber: 3,
-                    code: 'data := make([]int, 100)',
-                    explanation: '📦 ALLOC: Slice escapes to heap.',
+                    code: 'data := make([]int, 10)',
+                    explanation: '📦 ESCAPE: Go determines this slice might escape to heap.',
                     action: 'allocate-heap',
-                    blockId: 'go-block',
-                    blockSize: 800
+                    blockId: 'go-heap-obj',
+                    blockSize: 80
+                },
+                {
+                    lineNumber: 3,
+                    code: 'data := make([]int, 10)',
+                    explanation: '📍 STACK: The slice header is on the stack.',
+                    action: 'allocate-stack',
+                    blockId: 'go-stack-hdr',
+                    owner: 'data',
+                    pointsTo: 'go-heap-obj',
+                    blockSize: 24
                 },
                 {
                     lineNumber: 6,
                     code: 'process(data)',
-                    explanation: '⚙️ RUN: Active usage.',
+                    explanation: '⚙️ USE: Accessing heap memory through the stack header.',
                     action: 'scope-enter'
-                },
-                {
-                    lineNumber: 9,
-                    code: 'data = nil',
-                    explanation: '👻 UNREACHABLE: Pointer removed. GC candidate.',
-                    action: 'gc-mark',
-                    blockId: 'go-block'
-                },
-                {
-                    lineNumber: 11,
-                    code: '// 4. GC runs eventually',
-                    explanation: '🧹 SWEEP: Go Runtime eventually reclaims this memory.',
-                    action: 'gc-sweep',
-                    blockId: 'go-block'
                 }
             ]
         }
@@ -269,172 +279,118 @@ const allocationScenario: MemoryScenario = {
 }
 
 // ============================================
-// Scenario 2: Safety Checks (Forgot to Free)
+// Scenario 2: Safety & Issues
 // ============================================
 
 const safetyScenario: MemoryScenario = {
     id: 'safety',
-    title: 'The "Forgot to Free" Test',
-    description: 'What happens if we forget cleanup?',
-    icon: '⚠️',
+    title: 'Memory Safety',
+    description: 'Understanding leaks, dangling pointers, and safety guarantees.',
+    icon: '🛡️',
     implementations: {
         cpp: {
-            code: `void risky() {
-    // Allocating...
-    int* ptr = new int(42);
+            code: `void leakExample() {
+    // 1. Allocate
+    int* data = new int[50];
     
-    // Doing work...
-    // Oops, forgot delete!
-    
-    // Scope ends
+    // 2. Lose Pointer (Leak!)
+    data = nullptr;
 }`,
             steps: [
                 {
                     lineNumber: 3,
-                    code: 'int* ptr = new int(42);',
-                    explanation: '📦 ALLOC: 4 bytes allocated on heap.',
+                    code: 'int* data = new int[50];',
+                    explanation: '📦 ALLOC: 200 bytes on heap.',
                     action: 'allocate-heap',
-                    blockId: 'leak-block',
-                    blockSize: 4
+                    blockId: 'cpp-leak-heap',
+                    blockSize: 200
+                },
+                {
+                    lineNumber: 3,
+                    code: 'int* data = new int[50];',
+                    explanation: '📍 STACK: `data` points to it.',
+                    action: 'allocate-stack',
+                    blockId: 'cpp-leak-stack',
+                    owner: 'data',
+                    pointsTo: 'cpp-leak-heap',
+                    blockSize: 8
                 },
                 {
                     lineNumber: 6,
-                    code: '// Oops, forgot delete!',
-                    explanation: '⚠️ WARNING: No delete keyword found.',
-                    action: 'scope-enter'
+                    code: 'data = nullptr;',
+                    explanation: '💧 LEAK: Pointer is cleared, but memory was never freed! It is lost forever.',
+                    action: 'leak',
+                    blockId: 'cpp-leak-heap'
                 },
                 {
-                    lineNumber: 8,
-                    code: '// Scope ends',
-                    explanation: '💧 LEAK: stack pointer `ptr` is gone, but heap memory REMAINS used. 4 bytes lost forever (until process exit).',
-                    action: 'leak',
-                    blockId: 'leak-block'
+                    lineNumber: 6,
+                    code: 'data = nullptr;',
+                    explanation: '👻 GHOST: Stack variable is now null, pointing nowhere.',
+                    action: 'free',
+                    blockId: 'cpp-leak-stack'
                 }
             ]
         },
         rust: {
-            code: `fn safe() {
-    // Allocating...
-    let b = Box::new(42);
-    
-    // Doing work...
-    // Forgot to free? Impossible!
-    
-    // Scope ends -> Drop
+            code: `fn safety() {
+    let s1 = String::from("safe");
+    // Ownership ensures no leaks!
 }`,
             steps: [
                 {
-                    lineNumber: 3,
-                    code: 'let b = Box::new(42);',
-                    explanation: '📦 ALLOC: Box owns the memory.',
+                    lineNumber: 2,
+                    code: 'let s1 = String::from("safe");',
+                    explanation: '📦 SAFE: Rust tracks ownership automatically.',
                     action: 'allocate-heap',
-                    blockId: 'safe-block',
-                    blockSize: 4,
-                    owner: 'b'
-                },
-                {
-                    lineNumber: 6,
-                    code: '// Forgot to free? Impossible!',
-                    explanation: '🛡️ SAFETY: Rust enforces cleanup via Drop trait.',
-                    action: 'scope-enter'
-                },
-                {
-                    lineNumber: 8,
-                    code: '// Scope ends -> Drop',
-                    explanation: '✅ CLEANUP: Variable b out of scope. Memory freed automatically.',
-                    action: 'free',
-                    blockId: 'safe-block'
+                    blockId: 'rust-safe-heap',
+                    blockSize: 4
                 }
             ]
         },
         python: {
-            code: `def safe():
-    # Allocating...
-    x = MyObject()
-    
-    # Forget specific cleanup?
-    # Python GC handles it
-    
-    return
-}`,
+            code: `def safety():
+    x = [1, 2, 3]
+    # GC handles it`,
             steps: [
                 {
-                    lineNumber: 3,
-                    code: 'x = MyObject()',
-                    explanation: '📦 ALLOC: Object created.',
+                    lineNumber: 2,
+                    code: 'x = [1, 2, 3]',
+                    explanation: '♻️ GC: Ref count will handle cleanup.',
                     action: 'allocate-heap',
-                    blockId: 'safe-py',
-                    blockSize: 32
-                },
-                {
-                    lineNumber: 6,
-                    code: '# Python GC handles it',
-                    explanation: '🤖 AUTO: No manual free needed in Python.',
-                    action: 'scope-enter'
-                },
-                {
-                    lineNumber: 8,
-                    code: 'return',
-                    explanation: '✅ GC: Local vars cleared on return. RefCount -> 0. Freed.',
-                    action: 'free',
-                    blockId: 'safe-py'
+                    blockId: 'py-safe-heap',
+                    blockSize: 64
                 }
             ]
         },
         javascript: {
-            code: `function safe() {
-    // Allocating...
-    let x = { data: 42 };
-    
-    // Forget cleanup?
-    // JS Engine handles it
-    
-    return;
+            code: `function safety() {
+    const obj = {};
+    // GC handles it
 }`,
             steps: [
                 {
-                    lineNumber: 3,
-                    code: 'let x = { data: 42 };',
-                    explanation: '📦 ALLOC: Object created.',
+                    lineNumber: 2,
+                    code: 'const obj = {};',
+                    explanation: '♻️ GC: Managed by runtime.',
                     action: 'allocate-heap',
-                    blockId: 'safe-js',
-                    blockSize: 32
-                },
-                {
-                    lineNumber: 8,
-                    code: 'return;',
-                    explanation: '✅ GC: Context popped. Object unreachable. GC will collect it.',
-                    action: 'gc-mark',
-                    blockId: 'safe-js'
+                    blockId: 'js-safe-heap',
+                    blockSize: 16
                 }
             ]
         },
         go: {
-            code: `func safe() {
-    // Allocating...
-    p := new(int)
-    *p = 42
-    
-    // Forget cleanup?
-    // Go Runtime handles it
-    
-    return
+            code: `func safety() {
+    data := make([]int, 5)
+    // GC handles it
 }`,
             steps: [
                 {
-                    lineNumber: 3,
-                    code: 'p := new(int)',
-                    explanation: '📦 ALLOC: Int allocated on heap.',
+                    lineNumber: 2,
+                    code: 'data := make([]int, 5)',
+                    explanation: '♻️ GC: Managed by Go runtime.',
                     action: 'allocate-heap',
-                    blockId: 'safe-go',
-                    blockSize: 8
-                },
-                {
-                    lineNumber: 10,
-                    code: 'return',
-                    explanation: '✅ GC: Pointer lost. Memory becomes garbage. Collector will sweep it.',
-                    action: 'gc-mark',
-                    blockId: 'safe-go'
+                    blockId: 'go-safe-heap',
+                    blockSize: 40
                 }
             ]
         }
@@ -443,9 +399,8 @@ const safetyScenario: MemoryScenario = {
 
 export const MEMORY_SCENARIOS: MemoryScenario[] = [
     allocationScenario,
-    safetyScenario
+    safetyScenario,
 ]
 
-export const getScenarioById = (id: string): MemoryScenario | undefined => {
-    return MEMORY_SCENARIOS.find(s => s.id === id)
-}
+export const getScenarioById = (id: string) =>
+    MEMORY_SCENARIOS.find(s => s.id === id) || null
